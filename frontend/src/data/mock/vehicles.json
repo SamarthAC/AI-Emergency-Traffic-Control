@@ -1,0 +1,135 @@
+{
+  "vehicles": [
+    {
+      "id": "car-1",
+      "type": "car",
+      "laneOffset": 0,
+      "baseSpeed": 90,
+      "route": [
+        { "x": 430, "y": -60, "label": "N_ENTRY" },
+        { "x": 430, "y": 260, "label": "N_STOP" },
+        { "x": 430, "y": 760, "label": "S_EXIT" }
+      ]
+    },
+    {
+      "id": "car-2",
+      "type": "car",
+      "laneOffset": 0,
+      "baseSpeed": 85,
+      "route": [
+        { "x": 565, "y": 760, "label": "S_ENTRY" },
+        { "x": 565, "y": 440, "label": "S_STOP" },
+        { "x": 565, "y": -60, "label": "N_EXIT" }
+      ]
+    },
+    {
+      "id": "bus-1",
+      "type": "bus",
+      "laneOffset": 0,
+      "baseSpeed": 60,
+      "route": [
+        { "x": -60, "y": 280, "label": "W_ENTRY" },
+        { "x": 410, "y": 280, "label": "W_STOP" },
+        { "x": 1060, "y": 280, "label": "E_EXIT" }
+      ]
+    },
+    {
+      "id": "truck-1",
+      "type": "truck",
+      "laneOffset": 0,
+      "baseSpeed": 55,
+      "route": [
+        { "x": 1060, "y": 415, "label": "E_ENTRY" },
+        { "x": 590, "y": 415, "label": "E_STOP" },
+        { "x": -60, "y": 415, "label": "W_EXIT" }
+      ]
+    },
+    {
+      "id": "bike-1",
+      "type": "bike",
+      "laneOffset": 0,
+      "baseSpeed": 75,
+      "route": [
+        { "x": 475, "y": -60, "label": "N_ENTRY" },
+        { "x": 475, "y": 260, "label": "N_STOP" },
+        { "x": 475, "y": 760, "label": "S_EXIT" }
+      ]
+    },
+    {
+      "id": "car-3",
+      "type": "car",
+      "laneOffset": 0,
+      "baseSpeed": 95,
+      "route": [
+        { "x": -60, "y": 325, "label": "W_ENTRY" },
+        { "x": 410, "y": 325, "label": "W_STOP" },
+        { "x": 1060, "y": 325, "label": "E_EXIT" }
+      ]
+    },
+    {
+      "id": "car-4",
+      "type": "car",
+      "laneOffset": 0,
+      "baseSpeed": 88,
+      "route": [
+        { "x": 1060, "y": 370, "label": "E_ENTRY" },
+        { "x": 590, "y": 370, "label": "E_STOP" },
+        { "x": -60, "y": 370, "label": "W_EXIT" }
+      ]
+    },
+    {
+      "id": "bike-2",
+      "type": "bike",
+      "laneOffset": 0,
+      "baseSpeed": 70,
+      "route": [
+        { "x": 520, "y": 760, "label": "S_ENTRY" },
+        { "x": 520, "y": 440, "label": "S_STOP" },
+        { "x": 520, "y": -60, "label": "N_EXIT" }
+      ]
+    },
+    {
+      "id": "bus-2",
+      "type": "bus",
+      "laneOffset": 0,
+      "baseSpeed": 58,
+      "route": [
+        { "x": 430, "y": -200, "label": "N_ENTRY" },
+        { "x": 430, "y": 260, "label": "N_STOP" },
+        { "x": 430, "y": 760, "label": "S_EXIT" }
+      ]
+    },
+    {
+      "id": "car-5",
+      "type": "car",
+      "laneOffset": 0,
+      "baseSpeed": 92,
+      "route": [
+        { "x": -260, "y": 280, "label": "W_ENTRY" },
+        { "x": 410, "y": 280, "label": "W_STOP" },
+        { "x": 1060, "y": 280, "label": "E_EXIT" }
+      ]
+    }
+  ],
+  "ambulance": {
+    "id": "ambulance-1",
+    "type": "ambulance",
+    "laneOffset": 0,
+    "baseSpeed": 80,
+    "emergencySpeed": 150,
+    "originDirection": "S",
+    "destinationHospital": "City General Hospital",
+    "cruiseRoute": [
+      { "x": 520, "y": 760, "label": "S_ENTRY" },
+      { "x": 520, "y": 440, "label": "S_STOP" }
+    ],
+    "emergencyRoute": [
+      { "x": 520, "y": 900, "label": "AMB_START" },
+      { "x": 520, "y": 440, "label": "S_STOP" },
+      { "x": 500, "y": 380, "label": "JUNCTION_ENTRY" },
+      { "x": 500, "y": 325, "heading": 0, "label": "JUNCTION_TURN" },
+      { "x": 610, "y": 325, "label": "JUNCTION_EXIT" },
+      { "x": 1100, "y": 325, "label": "E_EXIT_HOSPITAL" }
+    ]
+  }
+}

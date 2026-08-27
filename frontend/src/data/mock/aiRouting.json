@@ -1,0 +1,8 @@
+{
+  "predictedBestRouteId": "route-emergency-01",
+  "shortestPathDistanceMeters": 1240,
+  "currentRouteDistanceMeters": 1240,
+  "alternativeRouteDistanceMeters": 1580,
+  "confidence": 0.94,
+  "algorithm": "ml-predicted"
+}

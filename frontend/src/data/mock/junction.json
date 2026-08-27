@@ -1,0 +1,10 @@
+{
+  "id": "junction-1",
+  "name": "MG Road & 5th Cross Junction",
+  "signals": {
+    "N": { "direction": "N", "color": "green", "remainingTimeSeconds": 18, "vehicleCount": 4 },
+    "S": { "direction": "S", "color": "green", "remainingTimeSeconds": 18, "vehicleCount": 3 },
+    "E": { "direction": "E", "color": "red", "remainingTimeSeconds": 18, "vehicleCount": 5 },
+    "W": { "direction": "W", "color": "red", "remainingTimeSeconds": 18, "vehicleCount": 2 }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "logs": [
+    { "id": "log-seed-1", "timestamp": "00:00:00", "level": "info", "message": "System initialized. Awaiting simulation start." }
+  ]
+}

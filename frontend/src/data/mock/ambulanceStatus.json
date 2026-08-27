@@ -1,0 +1,9 @@
+{
+  "vehicleId": "ambulance-1",
+  "currentJunction": "MG Road & 5th Cross Junction",
+  "destinationHospital": "City General Hospital",
+  "currentSpeed": 0,
+  "etaSeconds": 0,
+  "distanceRemainingMeters": 1240,
+  "active": false
+}
