@@ -19,7 +19,7 @@ class DetectionLoss(nn.Module):
         self.lambda_class = lambda_class
 
         self.bce = nn.BCEWithLogitsLoss()
-        self.mse = nn.MSELoss()
+        self.box_loss = nn.SmoothL1Loss()
         self.cross_entropy = nn.CrossEntropyLoss()
 
     def forward(self, predictions, targets):
@@ -47,10 +47,10 @@ class DetectionLoss(nn.Module):
         # BOUNDING BOX LOSS
         # Only calculate where vehicles exist
         # -----------------------------------
-        pred_boxes = predictions[:, 1:5].permute(0, 2, 3, 1)
+        pred_boxes = torch.sigmoid(predictions[:, 1:5]).permute(0, 2, 3, 1)
         target_boxes = targets[:, 1:5].permute(0, 2, 3, 1)
 
-        box_loss = self.mse(
+        box_loss = self.box_loss(
             pred_boxes[object_mask],
             target_boxes[object_mask]
         )
