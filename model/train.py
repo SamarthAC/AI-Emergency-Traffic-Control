@@ -12,8 +12,8 @@ from loss import DetectionLoss
 # SETTINGS
 # ==================================================
 
-EPOCHS = 1
-BATCH_SIZE = 4
+EPOCHS = 10
+BATCH_SIZE = 8
 LEARNING_RATE = 0.001
 NUM_CLASSES = 14
 GRID_SIZE = 28
