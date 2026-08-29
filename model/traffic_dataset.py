@@ -1,18 +1,29 @@
 import torch
 from torch.utils.data import Dataset
-from PIL import Image
+from PIL import Image, ImageEnhance
 from pathlib import Path
 import json
 import numpy as np
+import random
 
 
 class TrafficDataset(Dataset):
 
-    def __init__(self, image_dir, label_dir, image_size=448):
+    def __init__(
+        self,
+        image_dir,
+        label_dir,
+        image_size=448,
+        augment=False
+    ):
 
         self.image_dir = Path(image_dir)
         self.label_dir = Path(label_dir)
         self.image_size = image_size
+
+        # IMPORTANT:
+        # True only for training dataset
+        self.augment = augment
 
         self.images = sorted(
             self.image_dir.glob("*.png")
@@ -75,14 +86,14 @@ class TrafficDataset(Dataset):
             categories
         ):
 
-            # BMD-45 format:
+            # BMD-45:
             # [x, y, width, height]
 
             x, y, width, height = box
 
 
             # ----------------------------------------------
-            # Convert xywh → corner coordinates
+            # xywh -> corners
             # ----------------------------------------------
 
             x1 = x
@@ -93,7 +104,7 @@ class TrafficDataset(Dataset):
 
 
             # ----------------------------------------------
-            # Clamp coordinates to image boundaries
+            # Clamp
             # ----------------------------------------------
 
             x1 = max(
@@ -130,15 +141,19 @@ class TrafficDataset(Dataset):
 
 
             # ----------------------------------------------
-            # Skip completely invalid boxes
+            # Reject invalid boxes
             # ----------------------------------------------
 
-            if x2 <= x1 or y2 <= y1:
+            if (
+                x2 <= x1
+                or
+                y2 <= y1
+            ):
                 continue
 
 
             # ----------------------------------------------
-            # Convert corners → xywh again
+            # Clean xywh
             # ----------------------------------------------
 
             clean_x = x1
@@ -154,7 +169,7 @@ class TrafficDataset(Dataset):
 
 
             # ----------------------------------------------
-            # Normalize to 0-1
+            # Normalize 0-1
             # ----------------------------------------------
 
             normalized_x = (
@@ -188,12 +203,99 @@ class TrafficDataset(Dataset):
             )
 
 
-            # IMPORTANT:
-            # Only keep category if its box was valid
-
             valid_categories.append(
                 category
             )
+
+
+        # ==================================================
+        # V3 DATA AUGMENTATION
+        #
+        # TRAINING ONLY
+        # ==================================================
+
+        if self.augment:
+
+            # ==============================================
+            # 1. HORIZONTAL FLIP
+            # ==============================================
+
+            if random.random() < 0.50:
+
+                image = image.transpose(
+                    Image.Transpose.FLIP_LEFT_RIGHT
+                )
+
+
+                # Boxes are normalized xywh:
+                #
+                # old:
+                # x ----------->
+                #
+                # After horizontal flip:
+                #
+                # new_x = 1 - x - width
+
+                for box in normalized_boxes:
+
+                    old_x = box[0]
+                    width = box[2]
+
+                    new_x = (
+                        1.0
+                        - old_x
+                        - width
+                    )
+
+                    box[0] = new_x
+
+
+            # ==============================================
+            # 2. BRIGHTNESS AUGMENTATION
+            # ==============================================
+
+            if random.random() < 0.50:
+
+                brightness_factor = (
+                    random.uniform(
+                        0.80,
+                        1.20
+                    )
+                )
+
+                enhancer = (
+                    ImageEnhance.Brightness(
+                        image
+                    )
+                )
+
+                image = enhancer.enhance(
+                    brightness_factor
+                )
+
+
+            # ==============================================
+            # 3. CONTRAST AUGMENTATION
+            # ==============================================
+
+            if random.random() < 0.50:
+
+                contrast_factor = (
+                    random.uniform(
+                        0.80,
+                        1.20
+                    )
+                )
+
+                enhancer = (
+                    ImageEnhance.Contrast(
+                        image
+                    )
+                )
+
+                image = enhancer.enhance(
+                    contrast_factor
+                )
 
 
         # ==================================================
@@ -209,7 +311,7 @@ class TrafficDataset(Dataset):
 
 
         # ==================================================
-        # IMAGE → NUMPY
+        # IMAGE -> NUMPY
         # ==================================================
 
         image_array = np.asarray(
@@ -218,9 +320,6 @@ class TrafficDataset(Dataset):
         )
 
 
-        # Normalize:
-        # 0-255 → 0-1
-
         image_array = (
             image_array
             / 255.0
@@ -228,7 +327,7 @@ class TrafficDataset(Dataset):
 
 
         # ==================================================
-        # NUMPY → PYTORCH
+        # NUMPY -> PYTORCH
         # ==================================================
 
         image_tensor = torch.from_numpy(
@@ -236,21 +335,19 @@ class TrafficDataset(Dataset):
         )
 
 
-        # HWC → CHW
-        #
-        # [448,448,3]
-        #       ↓
-        # [3,448,448]
+        # HWC -> CHW
 
-        image_tensor = image_tensor.permute(
-            2,
-            0,
-            1
+        image_tensor = (
+            image_tensor.permute(
+                2,
+                0,
+                1
+            )
         )
 
 
         # ==================================================
-        # BOXES → TENSOR
+        # BOXES -> TENSOR
         # ==================================================
 
         if len(normalized_boxes) > 0:
@@ -262,9 +359,6 @@ class TrafficDataset(Dataset):
 
         else:
 
-            # Correct shape even when image
-            # contains zero valid objects
-
             boxes_tensor = torch.empty(
                 (0, 4),
                 dtype=torch.float32
@@ -272,7 +366,7 @@ class TrafficDataset(Dataset):
 
 
         # ==================================================
-        # CATEGORIES → TENSOR
+        # CATEGORIES -> TENSOR
         # ==================================================
 
         categories_tensor = torch.tensor(
@@ -316,10 +410,14 @@ if __name__ == "__main__":
     )
 
 
+    # Enable augmentation here so
+    # we're testing the V3 training path.
+
     dataset = TrafficDataset(
         image_dir,
         label_dir,
-        image_size=448
+        image_size=448,
+        augment=True
     )
 
 
@@ -329,72 +427,48 @@ if __name__ == "__main__":
     )
 
 
-    image, boxes, categories = (
-        dataset[0]
-    )
+    # Test several samples instead of only one.
+    # This increases the chance that random
+    # augmentation paths are exercised.
 
+    for index in range(
+        min(10, len(dataset))
+    ):
 
-    print(
-        "\nImage tensor shape:"
-    )
-
-    print(
-        image.shape
-    )
-
-
-    print(
-        "\nBounding boxes:"
-    )
-
-    print(
-        boxes
-    )
-
-
-    print(
-        "\nCategories:"
-    )
-
-    print(
-        categories
-    )
-
-
-    print(
-        "\nNumber of boxes:",
-        len(boxes)
-    )
-
-    print(
-        "Number of categories:",
-        len(categories)
-    )
-
-
-    # Make sure every box has a category
-
-    assert (
-        len(boxes)
-        ==
-        len(categories)
-    )
-
-
-    # Make sure normalized coordinates
-    # are inside 0-1
-
-    if len(boxes) > 0:
-
-        assert torch.all(
-            boxes >= 0
-        )
-
-        assert torch.all(
-            boxes <= 1
+        image, boxes, categories = (
+            dataset[index]
         )
 
 
+        assert (
+            image.shape
+            ==
+            (
+                3,
+                448,
+                448
+            )
+        )
+
+
+        assert (
+            len(boxes)
+            ==
+            len(categories)
+        )
+
+
+        if len(boxes) > 0:
+
+            assert torch.all(
+                boxes >= 0
+            )
+
+            assert torch.all(
+                boxes <= 1
+            )
+
+
     print(
-        "\nDataset test passed!"
+        "\nV3 dataset augmentation test passed!"
     )

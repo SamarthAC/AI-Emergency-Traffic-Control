@@ -22,12 +22,15 @@ LEARNING_RATE = 0.001
 
 NUM_WORKERS = 0
 
+EARLY_STOPPING_PATIENCE = 5
+
 
 # ==================================================
 # PATHS
 # ==================================================
 
 BASE_DIR = Path(__file__).parent.parent
+
 
 TRAIN_IMAGE_DIR = (
     BASE_DIR
@@ -43,6 +46,7 @@ TRAIN_LABEL_DIR = (
     / "labels"
 )
 
+
 VAL_IMAGE_DIR = (
     BASE_DIR
     / "dataset"
@@ -57,19 +61,24 @@ VAL_LABEL_DIR = (
     / "labels"
 )
 
+
+# ==================================================
+# V3 MODEL PATHS
+# ==================================================
+
 BEST_MODEL_PATH = (
     BASE_DIR
-    / "traffic_detector_v2_best.pth"
+    / "traffic_detector_v3_best.pth"
 )
 
 LAST_MODEL_PATH = (
     BASE_DIR
-    / "traffic_detector_v2_last.pth"
+    / "traffic_detector_v3_last.pth"
 )
 
 CHECKPOINT_PATH = (
     BASE_DIR
-    / "traffic_detector_v2_checkpoint.pth"
+    / "traffic_detector_v3_checkpoint.pth"
 )
 
 
@@ -83,7 +92,11 @@ device = torch.device(
     else "cpu"
 )
 
-print("Using device:", device)
+print(
+    "Using device:",
+    device
+)
+
 
 if torch.cuda.is_available():
 
@@ -92,8 +105,9 @@ if torch.cuda.is_available():
         torch.cuda.get_device_name(0)
     )
 
-    # Optimizes convolution algorithms for our
-    # fixed 448 x 448 input size
+    # Optimizes convolution algorithms
+    # for fixed 448 x 448 input size
+
     torch.backends.cudnn.benchmark = True
 
 
@@ -115,17 +129,33 @@ print(
 # DATASETS
 # ==================================================
 
+# --------------------------------------------------
+# TRAIN DATASET
+#
+# Augmentation enabled
+# --------------------------------------------------
+
 train_dataset = TrafficDataset(
     TRAIN_IMAGE_DIR,
     TRAIN_LABEL_DIR,
-    image_size=IMAGE_SIZE
+    image_size=IMAGE_SIZE,
+    augment=True
 )
+
+
+# --------------------------------------------------
+# VALIDATION DATASET
+#
+# NO augmentation
+# --------------------------------------------------
 
 val_dataset = TrafficDataset(
     VAL_IMAGE_DIR,
     VAL_LABEL_DIR,
-    image_size=IMAGE_SIZE
+    image_size=IMAGE_SIZE,
+    augment=False
 )
+
 
 print(
     "Training images:",
@@ -135,6 +165,17 @@ print(
 print(
     "Validation images:",
     len(val_dataset)
+)
+
+
+print(
+    "Training augmentation:",
+    train_dataset.augment
+)
+
+print(
+    "Validation augmentation:",
+    val_dataset.augment
 )
 
 
@@ -156,13 +197,28 @@ def collate_fn(batch):
             num_classes=NUM_CLASSES
         )
 
-        images.append(image)
-        targets.append(target)
+        images.append(
+            image
+        )
 
-    images = torch.stack(images)
-    targets = torch.stack(targets)
+        targets.append(
+            target
+        )
 
-    return images, targets
+
+    images = torch.stack(
+        images
+    )
+
+    targets = torch.stack(
+        targets
+    )
+
+
+    return (
+        images,
+        targets
+    )
 
 
 # ==================================================
@@ -177,6 +233,7 @@ train_loader = DataLoader(
     pin_memory=torch.cuda.is_available(),
     collate_fn=collate_fn
 )
+
 
 val_loader = DataLoader(
     val_dataset,
@@ -194,15 +251,18 @@ val_loader = DataLoader(
 
 model = TrafficCNN(
     num_classes=NUM_CLASSES
-).to(device)
+).to(
+    device
+)
 
 
 # ==================================================
 # LOSS
 # ==================================================
 
-criterion = TrafficDetectionLoss().to(
-    device
+criterion = (
+    TrafficDetectionLoss()
+    .to(device)
 )
 
 
@@ -221,11 +281,14 @@ optimizer = torch.optim.AdamW(
 # LEARNING RATE SCHEDULER
 # ==================================================
 
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer,
-    mode="min",
-    factor=0.5,
-    patience=2
+scheduler = (
+    torch.optim.lr_scheduler
+    .ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=0.5,
+        patience=2
+    )
 )
 
 
@@ -240,16 +303,25 @@ scaler = torch.amp.GradScaler(
 
 
 # ==================================================
-# TRAINING
+# TRAINING VARIABLES
 # ==================================================
 
-best_val_loss = float("inf")
+best_val_loss = float(
+    "inf"
+)
 
+epochs_without_improvement = 0
+
+
+# ==================================================
+# TRAINING LOOP
+# ==================================================
 
 for epoch in range(
     1,
     EPOCHS + 1
 ):
+
 
     # ==================================================
     # TRAIN
@@ -263,7 +335,10 @@ for epoch in range(
     for batch_index, (
         images,
         targets
-    ) in enumerate(train_loader):
+    ) in enumerate(
+        train_loader
+    ):
+
 
         images = images.to(
             device,
@@ -302,7 +377,7 @@ for epoch in range(
 
 
         # ==============================================
-        # BACKPROPAGATION WITH AMP
+        # BACKPROPAGATION
         # ==============================================
 
         scaler.scale(
@@ -310,7 +385,10 @@ for epoch in range(
         ).backward()
 
 
-        # Unscale gradients before clipping
+        # ----------------------------------------------
+        # Unscale before gradient clipping
+        # ----------------------------------------------
+
         scaler.unscale_(
             optimizer
         )
@@ -369,7 +447,9 @@ for epoch in range(
 
     with torch.no_grad():
 
-        for images, targets in val_loader:
+        for images, targets in (
+            val_loader
+        ):
 
             images = images.to(
                 device,
@@ -418,7 +498,8 @@ for epoch in range(
 
 
     current_lr = (
-        optimizer.param_groups[0]["lr"]
+        optimizer
+        .param_groups[0]["lr"]
     )
 
 
@@ -455,27 +536,47 @@ for epoch in range(
 
 
     # ==================================================
-    # SAVE BEST MODEL
+    # BEST MODEL + EARLY STOPPING TRACKING
     # ==================================================
 
-    if val_loss < best_val_loss:
+    if (
+        val_loss
+        <
+        best_val_loss
+    ):
 
         best_val_loss = (
             val_loss
         )
+
+        epochs_without_improvement = 0
+
 
         torch.save(
             model.state_dict(),
             BEST_MODEL_PATH
         )
 
+
         print(
-            "✅ Best model saved!"
+            "✅ Best V3 model saved!"
         )
 
         print(
             "Best validation loss:",
             f"{best_val_loss:.4f}"
+        )
+
+
+    else:
+
+        epochs_without_improvement += 1
+
+
+        print(
+            "No validation improvement:",
+            f"{epochs_without_improvement}/"
+            f"{EARLY_STOPPING_PATIENCE}"
         )
 
 
@@ -495,6 +596,7 @@ for epoch in range(
 
     torch.save(
         {
+
             "epoch":
                 epoch,
 
@@ -517,14 +619,49 @@ for epoch in range(
                 train_loss,
 
             "val_loss":
-                val_loss
+                val_loss,
+
+            "epochs_without_improvement":
+                epochs_without_improvement
+
         },
+
         CHECKPOINT_PATH
     )
 
+
     print(
-        "💾 Full checkpoint saved."
+        "💾 Full V3 checkpoint saved."
     )
+
+
+    # ==================================================
+    # EARLY STOPPING
+    # ==================================================
+
+    if (
+        epochs_without_improvement
+        >=
+        EARLY_STOPPING_PATIENCE
+    ):
+
+        print(
+            "\n🛑 Early stopping triggered."
+        )
+
+        print(
+            "Validation loss did not improve "
+            f"for "
+            f"{EARLY_STOPPING_PATIENCE} "
+            "epochs."
+        )
+
+        print(
+            "Best validation loss:",
+            f"{best_val_loss:.4f}"
+        )
+
+        break
 
 
 # ==================================================
@@ -532,32 +669,44 @@ for epoch in range(
 # ==================================================
 
 print(
-    "\nTraining complete!"
+    "\n===================================="
 )
+
+print(
+    "V3 training complete!"
+)
+
+print(
+    "===================================="
+)
+
 
 print(
     "\nBest validation loss:",
     f"{best_val_loss:.4f}"
 )
 
+
 print(
-    "\nBest model:"
+    "\nBest V3 model:"
 )
 
 print(
     BEST_MODEL_PATH
 )
 
+
 print(
-    "\nLast model:"
+    "\nLast V3 model:"
 )
 
 print(
     LAST_MODEL_PATH
 )
 
+
 print(
-    "\nCheckpoint:"
+    "\nV3 checkpoint:"
 )
 
 print(

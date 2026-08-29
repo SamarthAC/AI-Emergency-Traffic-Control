@@ -1,6 +1,90 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
+
+# ==================================================
+# FOCAL BINARY CROSS ENTROPY
+# ==================================================
+
+class FocalBCEWithLogitsLoss(nn.Module):
+
+    def __init__(
+        self,
+        alpha=0.25,
+        gamma=2.0
+    ):
+
+        super().__init__()
+
+        self.alpha = alpha
+        self.gamma = gamma
+
+
+    def forward(
+        self,
+        logits,
+        targets
+    ):
+
+        # Standard BCE for every prediction
+        bce_loss = (
+            F.binary_cross_entropy_with_logits(
+                logits,
+                targets,
+                reduction="none"
+            )
+        )
+
+
+        # Convert logits -> probabilities
+        probabilities = torch.sigmoid(
+            logits
+        )
+
+
+        # Probability assigned to the
+        # correct target class
+        p_t = (
+            probabilities * targets
+            +
+            (1.0 - probabilities)
+            * (1.0 - targets)
+        )
+
+
+        # Positive / negative balancing
+        alpha_t = (
+            self.alpha * targets
+            +
+            (1.0 - self.alpha)
+            * (1.0 - targets)
+        )
+
+
+        # Focal weighting
+        focal_weight = (
+            alpha_t
+            *
+            (1.0 - p_t).pow(
+                self.gamma
+            )
+        )
+
+
+        loss = (
+            focal_weight
+            *
+            bce_loss
+        )
+
+
+        return loss.mean()
+
+
+# ==================================================
+# TRAFFIC DETECTION LOSS
+# ==================================================
 
 class TrafficDetectionLoss(nn.Module):
 
@@ -8,11 +92,14 @@ class TrafficDetectionLoss(nn.Module):
         self,
         lambda_box=5.0,
         lambda_obj=1.0,
-        lambda_noobj=0.25,
-        lambda_class=1.0
+        lambda_noobj=0.50,
+        lambda_class=1.0,
+        focal_alpha=0.25,
+        focal_gamma=2.0
     ):
 
         super().__init__()
+
 
         self.lambda_box = lambda_box
         self.lambda_obj = lambda_obj
@@ -21,11 +108,22 @@ class TrafficDetectionLoss(nn.Module):
 
 
         # ==================================================
-        # OBJECTNESS LOSS
+        # V3 OBJECTNESS LOSS
+        # ==================================================
+        #
+        # V2 used ordinary BCE.
+        #
+        # V3 uses focal BCE so that the huge number of
+        # easy background cells do not dominate training.
+        #
+        # Hard false positives receive more attention.
         # ==================================================
 
         self.objectness_loss = (
-            nn.BCEWithLogitsLoss()
+            FocalBCEWithLogitsLoss(
+                alpha=focal_alpha,
+                gamma=focal_gamma
+            )
         )
 
 
@@ -41,9 +139,6 @@ class TrafficDetectionLoss(nn.Module):
         # ==================================================
         # CLASS BALANCING
         # ==================================================
-        #
-        # Counts from YOUR 3000-image training subset
-        #
 
         class_counts = torch.tensor(
             [
@@ -66,7 +161,6 @@ class TrafficDetectionLoss(nn.Module):
         )
 
 
-        # Avoid division by zero
         nonzero_mask = (
             class_counts > 0
         )
@@ -77,39 +171,36 @@ class TrafficDetectionLoss(nn.Module):
         )
 
 
-        # Square-root inverse frequency.
-        #
-        # Less aggressive than pure inverse frequency,
-        # which would make rare classes dominate training.
-
         mean_count = (
-            class_counts[nonzero_mask]
-            .mean()
+            class_counts[
+                nonzero_mask
+            ].mean()
         )
 
 
-        class_weights[nonzero_mask] = (
-            torch.sqrt(
-                mean_count
-                /
-                class_counts[nonzero_mask]
-            )
+        # Square-root inverse-frequency weighting
+        class_weights[
+            nonzero_mask
+        ] = torch.sqrt(
+            mean_count
+            /
+            class_counts[
+                nonzero_mask
+            ]
         )
 
 
-        # Normalize average useful weight to ~1
-        class_weights[nonzero_mask] /= (
+        # Normalize useful weights
+        class_weights[
+            nonzero_mask
+        ] /= (
             class_weights[
                 nonzero_mask
             ].mean()
         )
 
 
-        # Class 13 ("Other") does not occur in
-        # our current training subset.
-        #
-        # Give it zero loss weight.
-
+        # "Other" has no examples
         class_weights[13] = 0.0
 
 
@@ -167,7 +258,10 @@ class TrafficDetectionLoss(nn.Module):
         )
 
 
-        # Positive cells
+        # ==================================================
+        # POSITIVE OBJECT CELLS
+        # ==================================================
+
         if object_mask.any():
 
             object_loss = (
@@ -184,11 +278,15 @@ class TrafficDetectionLoss(nn.Module):
         else:
 
             object_loss = (
-                predictions.sum() * 0
+                predictions.sum()
+                * 0
             )
 
 
-        # Negative cells
+        # ==================================================
+        # BACKGROUND / NO-OBJECT CELLS
+        # ==================================================
+
         if no_object_mask.any():
 
             no_object_loss = (
@@ -205,7 +303,8 @@ class TrafficDetectionLoss(nn.Module):
         else:
 
             no_object_loss = (
-                predictions.sum() * 0
+                predictions.sum()
+                * 0
             )
 
 
@@ -250,7 +349,8 @@ class TrafficDetectionLoss(nn.Module):
         else:
 
             box_loss = (
-                predictions.sum() * 0
+                predictions.sum()
+                * 0
             )
 
 
@@ -293,12 +393,13 @@ class TrafficDetectionLoss(nn.Module):
         else:
 
             class_loss = (
-                predictions.sum() * 0
+                predictions.sum()
+                * 0
             )
 
 
         # ==================================================
-        # TOTAL
+        # TOTAL LOSS
         # ==================================================
 
         total_loss = (
@@ -323,9 +424,14 @@ class TrafficDetectionLoss(nn.Module):
         )
 
 
+        # ==================================================
+        # RETURN
+        # ==================================================
+
         return (
             total_loss,
             {
+
                 "object":
                     object_loss.item(),
 
@@ -337,5 +443,6 @@ class TrafficDetectionLoss(nn.Module):
 
                 "class":
                     class_loss.item()
+
             }
         )

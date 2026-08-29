@@ -215,11 +215,11 @@ if (
 ):
 
     print(
-        "\n✅ V2 LOSS TEST PASSED!"
+        "\n✅ V3 LOSS TEST PASSED!"
     )
 
 else:
 
     print(
-        "\n❌ V2 LOSS TEST FAILED!"
+        "\n❌ V3 LOSS TEST FAILED!"
     )
