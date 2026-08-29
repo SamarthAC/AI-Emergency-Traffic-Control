@@ -6,87 +6,184 @@ class TrafficCNN(nn.Module):
 
     def __init__(self, num_classes=14):
 
-        super(TrafficCNN, self).__init__()
+        super().__init__()
 
-        # -----------------------------
-        # CNN FEATURE EXTRACTOR
-        # -----------------------------
         self.features = nn.Sequential(
 
-            nn.Conv2d(
-                in_channels=3,
-                out_channels=32,
-                kernel_size=3,
-                padding=1
-            ),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
+            # ==================================
+            # BLOCK 1
+            # 448 → 224
+            # ==================================
 
             nn.Conv2d(
-                in_channels=32,
-                out_channels=64,
+                3,
+                32,
                 kernel_size=3,
                 padding=1
             ),
+
+            nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.MaxPool2d(2),
 
             nn.Conv2d(
-                in_channels=64,
-                out_channels=128,
+                32,
+                32,
                 kernel_size=3,
                 padding=1
             ),
+
+            nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.MaxPool2d(2)
+
+            nn.MaxPool2d(2),
+
+
+            # ==================================
+            # BLOCK 2
+            # 224 → 112
+            # ==================================
+
+            nn.Conv2d(
+                32,
+                64,
+                kernel_size=3,
+                padding=1
+            ),
+
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+
+            nn.Conv2d(
+                64,
+                64,
+                kernel_size=3,
+                padding=1
+            ),
+
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+
+            nn.MaxPool2d(2),
+
+
+            # ==================================
+            # BLOCK 3
+            # 112 → 56
+            # ==================================
+
+            nn.Conv2d(
+                64,
+                128,
+                kernel_size=3,
+                padding=1
+            ),
+
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+
+            nn.Conv2d(
+                128,
+                128,
+                kernel_size=3,
+                padding=1
+            ),
+
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+
+            nn.MaxPool2d(2),
+
+
+            # ==================================
+            # BLOCK 4
+            # 56 → 28
+            # ==================================
+
+            nn.Conv2d(
+                128,
+                256,
+                kernel_size=3,
+                padding=1
+            ),
+
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+
+            nn.Conv2d(
+                256,
+                256,
+                kernel_size=3,
+                padding=1
+            ),
+
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+
+            nn.MaxPool2d(2),
+
         )
 
-        # -----------------------------
+
+        # ==================================
         # DETECTION HEAD
-        # -----------------------------
-        # Each grid cell predicts:
-        #
-        # 1 object confidence
-        # 4 bounding-box values
-        # num_classes class scores
-        #
-        # Total = 5 + num_classes
+        # ==================================
 
-        self.detection_head = nn.Conv2d(
-            in_channels=128,
-            out_channels=5 + num_classes,
-            kernel_size=1
+        self.detection_head = nn.Sequential(
+
+            nn.Conv2d(
+                256,
+                256,
+                kernel_size=3,
+                padding=1
+            ),
+
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+
+            nn.Conv2d(
+                256,
+                5 + num_classes,
+                kernel_size=1
+            )
         )
+
 
     def forward(self, x):
 
-        # Extract visual features
         x = self.features(x)
 
-        # Make predictions
         x = self.detection_head(x)
 
         return x
 
 
-# ------------------------------------------------
-# TEST THE MODEL
-# ------------------------------------------------
+# ==================================
+# TEST
+# ==================================
 
 if __name__ == "__main__":
 
-    model = TrafficCNN(num_classes=14)
+    model = TrafficCNN(
+        num_classes=14
+    )
 
-    # One test image
-    test_image = torch.randn(1, 3, 224, 224)
+    dummy_input = torch.randn(
+        1,
+        3,
+        448,
+        448
+    )
 
-    output = model(test_image)
+    output = model(
+        dummy_input
+    )
 
-    print("Input shape:")
-    print(test_image.shape)
+    print(
+        "Input:",
+        dummy_input.shape
+    )
 
-    print("\nOutput shape:")
-    print(output.shape)
-
-    print("\nModel:")
-    print(model)
+    print(
+        "Output:",
+        output.shape
+    )

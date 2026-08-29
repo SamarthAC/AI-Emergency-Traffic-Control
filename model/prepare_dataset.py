@@ -2,113 +2,182 @@ from datasets import load_dataset
 from pathlib import Path
 import json
 
-# -----------------------------
+
+# ==================================================
 # SETTINGS
-# -----------------------------
-TRAIN_IMAGES = 400
-VAL_IMAGES = 100
+# ==================================================
+
+TRAIN_LIMIT = 3000
+VAL_LIMIT = 500
+
+
+# ==================================================
+# PATHS
+# ==================================================
 
 BASE_DIR = Path(__file__).parent.parent
+
 DATASET_DIR = BASE_DIR / "dataset"
 
-# -----------------------------
-# CREATE FOLDERS
-# -----------------------------
-train_images_dir = DATASET_DIR / "train" / "images"
-train_labels_dir = DATASET_DIR / "train" / "labels"
 
-val_images_dir = DATASET_DIR / "val" / "images"
-val_labels_dir = DATASET_DIR / "val" / "labels"
+# ==================================================
+# SAVE SPLIT
+# ==================================================
 
-for directory in [
-    train_images_dir,
-    train_labels_dir,
-    val_images_dir,
-    val_labels_dir
-]:
-    directory.mkdir(parents=True, exist_ok=True)
+def save_split(split_name, limit):
 
-# -----------------------------
-# LOAD DATASET
-# -----------------------------
-print("Connecting to BMD-45...")
+    print(
+        f"\nPreparing {split_name} dataset..."
+    )
 
-train_ds = load_dataset(
-    "iisc-aim/BMD-45",
-    split="train",
-    streaming=True
-)
+    image_dir = (
+        DATASET_DIR
+        / split_name
+        / "images"
+    )
 
-val_ds = load_dataset(
-    "iisc-aim/BMD-45",
-    split="val",
-    streaming=True
-)
+    label_dir = (
+        DATASET_DIR
+        / split_name
+        / "labels"
+    )
 
-# -----------------------------
-# SAVE TRAINING DATA
-# -----------------------------
-print("\nSaving training images...")
+    image_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-for i, sample in enumerate(train_ds):
+    label_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-    image = sample["image"]
-    objects = sample["objects"]
 
-    image_path = train_images_dir / f"train_{i:04d}.png"
-    label_path = train_labels_dir / f"train_{i:04d}.json"
+    # ----------------------------------------------
+    # Load BMD-45 using streaming
+    # ----------------------------------------------
 
-    image.save(image_path)
+    dataset = load_dataset(
+        "iisc-aim/BMD-45",
+        split=split_name,
+        streaming=True
+    )
 
-    annotation = {
-        "image_width": image.width,
-        "image_height": image.height,
-        "objects": objects
-    }
 
-    with open(label_path, "w") as f:
-        json.dump(annotation, f)
+    # ----------------------------------------------
+    # Save samples
+    # ----------------------------------------------
 
-    if (i + 1) % 25 == 0:
-        print(f"Training: {i + 1}/{TRAIN_IMAGES}")
+    for index, sample in enumerate(dataset):
 
-    if i + 1 >= TRAIN_IMAGES:
-        break
+        if index >= limit:
+            break
 
-# -----------------------------
-# SAVE VALIDATION DATA
-# -----------------------------
-print("\nSaving validation images...")
 
-for i, sample in enumerate(val_ds):
+        image = sample["image"].convert(
+            "RGB"
+        )
 
-    image = sample["image"]
-    objects = sample["objects"]
 
-    image_path = val_images_dir / f"val_{i:04d}.png"
-    label_path = val_labels_dir / f"val_{i:04d}.json"
+        image_width, image_height = (
+            image.size
+        )
 
-    image.save(image_path)
 
-    annotation = {
-        "image_width": image.width,
-        "image_height": image.height,
-        "objects": objects
-    }
+        # ------------------------------------------
+        # File names
+        # ------------------------------------------
 
-    with open(label_path, "w") as f:
-        json.dump(annotation, f)
+        image_name = (
+            f"{split_name}_{index:04d}.png"
+        )
 
-    if (i + 1) % 25 == 0:
-        print(f"Validation: {i + 1}/{VAL_IMAGES}")
+        label_name = (
+            f"{split_name}_{index:04d}.json"
+        )
 
-    if i + 1 >= VAL_IMAGES:
-        break
 
-print("\n==============================")
-print("DATASET PREPARATION COMPLETE")
-print("==============================")
+        image_path = (
+            image_dir
+            / image_name
+        )
 
-print(f"Training images: {TRAIN_IMAGES}")
-print(f"Validation images: {VAL_IMAGES}")
-print(f"Dataset location: {DATASET_DIR}")
+        label_path = (
+            label_dir
+            / label_name
+        )
+
+
+        # ------------------------------------------
+        # Save image
+        # ------------------------------------------
+
+        image.save(
+            image_path
+        )
+
+
+        # ------------------------------------------
+        # Save annotation
+        # ------------------------------------------
+
+        label_data = {
+
+            "image_width":
+                image_width,
+
+            "image_height":
+                image_height,
+
+            "objects":
+                sample["objects"]
+        }
+
+
+        with open(
+            label_path,
+            "w"
+        ) as file:
+
+            json.dump(
+                label_data,
+                file
+            )
+
+
+        # ------------------------------------------
+        # Progress
+        # ------------------------------------------
+
+        if (index + 1) % 100 == 0:
+
+            print(
+                f"{split_name}: "
+                f"{index + 1}/{limit}"
+            )
+
+
+    print(
+        f"{split_name} completed!"
+    )
+
+
+# ==================================================
+# MAIN
+# ==================================================
+
+if __name__ == "__main__":
+
+    save_split(
+        "train",
+        TRAIN_LIMIT
+    )
+
+    save_split(
+        "val",
+        VAL_LIMIT
+    )
+
+    print(
+        "\nDataset preparation complete!"
+    )

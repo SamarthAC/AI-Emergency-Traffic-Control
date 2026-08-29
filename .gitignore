@@ -1,0 +1,12 @@
+# Dataset
+dataset/
+
+# Trained model weights/checkpoints
+*.pth
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Generated prediction images
+predicted_detection.png

@@ -1,73 +1,225 @@
 import torch
-from pathlib import Path
 
-from traffic_dataset import TrafficDataset
-from target_generator import create_target_grid
 from model import TrafficCNN
-from loss import DetectionLoss
+from loss import TrafficDetectionLoss
+from target_generator import create_target_grid
 
 
-BASE_DIR = Path(__file__).parent.parent
+# ==================================================
+# SETTINGS
+# ==================================================
 
-image_dir = BASE_DIR / "dataset" / "train" / "images"
-label_dir = BASE_DIR / "dataset" / "train" / "labels"
+NUM_CLASSES = 14
+GRID_SIZE = 28
+IMAGE_SIZE = 448
 
 
-# Load dataset
-dataset = TrafficDataset(
-    image_dir,
-    label_dir
+# ==================================================
+# DEVICE
+# ==================================================
+
+device = torch.device(
+    "cuda" if torch.cuda.is_available()
+    else "cpu"
 )
 
-image, boxes, categories = dataset[0]
+print("Using device:", device)
 
 
-# Create target
-target = create_target_grid(
-    boxes,
-    categories
-)
+# ==================================================
+# MODEL
+# ==================================================
 
-
-# Add batch dimensions
-image = image.unsqueeze(0)
-
-target = target.unsqueeze(0)
-
-
-# Create model
 model = TrafficCNN(
-    num_classes=14
-)
+    num_classes=NUM_CLASSES
+).to(device)
 
 
-# Prediction
-prediction = model(image)
+# ==================================================
+# LOSS
+# ==================================================
+
+criterion = TrafficDetectionLoss().to(device)
 
 
-print("Prediction:")
-print(prediction.shape)
+print("\nClass weights:")
 
-print("Target:")
-print(target.shape)
-
-
-# Create loss
-criterion = DetectionLoss()
-
-
-# Calculate loss
-losses = criterion(
-    prediction,
-    target
-)
-
-
-print("\n===== LOSSES =====")
-
-for name, value in losses.items():
+for i, weight in enumerate(
+    criterion.class_weights
+):
 
     print(
-        f"{name:10s}: "
-        f"{value.item():.4f}"
+        f"Class {i:2d}: "
+        f"{weight.item():.4f}"
+    )
+
+
+# ==================================================
+# FAKE IMAGE
+# ==================================================
+
+image = torch.randn(
+    2,
+    3,
+    IMAGE_SIZE,
+    IMAGE_SIZE
+).to(device)
+
+
+# ==================================================
+# FAKE BOXES + CLASSES
+# ==================================================
+
+boxes1 = torch.tensor(
+    [
+        [0.20, 0.20, 0.10, 0.10],
+        [0.60, 0.50, 0.15, 0.20]
+    ],
+    dtype=torch.float32
+)
+
+categories1 = torch.tensor(
+    [7, 2],
+    dtype=torch.long
+)
+
+
+boxes2 = torch.tensor(
+    [
+        [0.30, 0.40, 0.20, 0.15]
+    ],
+    dtype=torch.float32
+)
+
+categories2 = torch.tensor(
+    [0],
+    dtype=torch.long
+)
+
+
+# ==================================================
+# CREATE TARGETS
+# ==================================================
+
+target1 = create_target_grid(
+    boxes1,
+    categories1,
+    grid_size=GRID_SIZE,
+    num_classes=NUM_CLASSES
+)
+
+target2 = create_target_grid(
+    boxes2,
+    categories2,
+    grid_size=GRID_SIZE,
+    num_classes=NUM_CLASSES
+)
+
+
+targets = torch.stack(
+    [
+        target1,
+        target2
+    ]
+).to(device)
+
+
+# ==================================================
+# FORWARD
+# ==================================================
+
+predictions = model(
+    image
+)
+
+
+print(
+    "\nPrediction shape:",
+    predictions.shape
+)
+
+print(
+    "Target shape:",
+    targets.shape
+)
+
+
+# ==================================================
+# LOSS
+# ==================================================
+
+total_loss, loss_parts = criterion(
+    predictions,
+    targets
+)
+
+
+print(
+    "\nTotal loss:",
+    total_loss.item()
+)
+
+
+print("\nLoss components:")
+
+for name, value in loss_parts.items():
+
+    print(
+        f"{name:12s}: "
+        f"{value:.4f}"
+    )
+
+
+# ==================================================
+# BACKPROP TEST
+# ==================================================
+
+total_loss.backward()
+
+
+print(
+    "\nBackward pass successful!"
+)
+
+
+# ==================================================
+# CHECK GRADIENTS
+# ==================================================
+
+has_gradient = False
+
+for parameter in model.parameters():
+
+    if parameter.grad is not None:
+
+        has_gradient = True
+        break
+
+
+print(
+    "Model gradients created:",
+    has_gradient
+)
+
+
+if (
+    predictions.shape
+    == (2, 19, 28, 28)
+    and
+    targets.shape
+    == (2, 19, 28, 28)
+    and
+    torch.isfinite(total_loss)
+    and
+    has_gradient
+):
+
+    print(
+        "\n✅ V2 LOSS TEST PASSED!"
+    )
+
+else:
+
+    print(
+        "\n❌ V2 LOSS TEST FAILED!"
     )
