@@ -1,12 +1,21 @@
-# Dataset
+# Datasets
 dataset/
+ambulance_raw/
+ambulance_v4/
 
-# Trained model weights/checkpoints
+# Dataset inspection / audit outputs
+ambulance_audit/
+ambulance_box_check/
+
+# Model weights
 *.pth
 
 # Python cache
 __pycache__/
 *.pyc
 
-# Generated prediction images
+# Generated test / prediction images
+letterbox_v4_random_test.png
+letterbox_v4_test.png
+train_0379_v3_detection.png
 predicted_detection.png
