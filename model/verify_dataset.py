@@ -3,7 +3,7 @@ import json
 
 
 BASE_DIR = Path(__file__).parent.parent
-DATASET_DIR = BASE_DIR / "dataset"
+DATASET_DIR = BASE_DIR / "dataset_v4"
 
 
 CLASS_NAMES = [

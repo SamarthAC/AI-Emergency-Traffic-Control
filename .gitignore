@@ -10,6 +10,7 @@ ambulance_box_check/
 # Model weights
 *.pth
 
+
 # Python cache
 __pycache__/
 *.pyc
@@ -19,3 +20,12 @@ letterbox_v4_random_test.png
 letterbox_v4_test.png
 train_0379_v3_detection.png
 predicted_detection.png
+
+# V4 datasets
+dataset_v4/
+ambulance_clean/
+ambulance_v4/
+
+# PyTorch model weights/checkpoints
+*.pth
+*.pt

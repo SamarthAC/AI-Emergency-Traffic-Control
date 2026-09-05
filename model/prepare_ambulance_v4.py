@@ -10,7 +10,7 @@ from collections import defaultdict
 
 BASE_DIR = Path(__file__).parent.parent
 
-SOURCE_ROOT = BASE_DIR / "ambulance_raw"
+SOURCE_ROOT = BASE_DIR / "ambulance_clean"
 
 OUTPUT_ROOT = BASE_DIR / "ambulance_v4"
 
@@ -478,6 +478,30 @@ print(
     f"{OUTPUT_ROOT}"
 )
 
+# ==========================================================
+# CLEAN OLD OUTPUT
+# ==========================================================
+
+if OUTPUT_ROOT.exists():
+
+    print(
+        "\nRemoving previous ambulance_v4 dataset..."
+    )
+
+    shutil.rmtree(
+        OUTPUT_ROOT
+    )
+
+
+OUTPUT_ROOT.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+
+print(
+    "\nClean output directory created."
+)
 
 all_stats = {}
 
