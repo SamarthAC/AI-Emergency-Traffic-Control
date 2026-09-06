@@ -29,3 +29,47 @@ ambulance_v4/
 # PyTorch model weights/checkpoints
 *.pth
 *.pt
+
+# ==============================
+# ML datasets / model weights
+# ==============================
+*.pth
+*.pt
+
+model/dataset/
+model/dataset_v4/
+model/ambulance_raw/
+model/ambulance_clean/
+model/ambulance_v4/
+
+# ==============================
+# Runtime calibration/test data
+# ==============================
+model/runtime_test/
+model/traffic_sweep_results/
+ambulance_error_analysis_v4/
+ambulance_fp_classification_v4/
+
+# ==============================
+# Generated inference outputs
+# ==============================
+model/*result*.jpg
+model/*result*.jpeg
+model/*result*.png
+model/*result*.json
+model/*letterboxed*.jpg
+model/*letterboxed*.jpeg
+
+# Individual local test images
+model/test_amb*
+model/test_image*
+model/auto_test.jpg
+
+# Calibration output
+model/runtime_ambulance_calibration.csv
+
+# ==============================
+# Python generated files
+# ==============================
+__pycache__/
+*.pyc
