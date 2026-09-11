@@ -1,0 +1,206 @@
+{
+  "image": "low4.jpg",
+  "image_width": 1300,
+  "image_height": 956,
+  "device": "cuda",
+  "vehicle_count": 11,
+  "non_ambulance_vehicle_count": 8,
+  "ambulance_detected": true,
+  "ambulance_count": 3,
+  "highest_ambulance_confidence": 0.8959,
+  "class_counts": {
+    "Ambulance": 3,
+    "Sedan": 1,
+    "Tempo-traveller": 1,
+    "Two-wheeler": 6
+  },
+  "detections": [
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.9523,
+      "box_normalized": [
+        0.465043,
+        0.48635,
+        0.494522,
+        0.53936
+      ],
+      "box_pixels": [
+        604.6,
+        461.0,
+        642.9,
+        530.0
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.9415,
+      "box_normalized": [
+        0.527058,
+        0.497422,
+        0.557967,
+        0.54946
+      ],
+      "box_pixels": [
+        685.2,
+        475.4,
+        725.4,
+        543.1
+      ]
+    },
+    {
+      "class_id": 14,
+      "class_name": "Ambulance",
+      "confidence": 0.8959,
+      "box_normalized": [
+        0.84861,
+        0.546708,
+        0.983843,
+        0.624786
+      ],
+      "box_pixels": [
+        1103.2,
+        539.5,
+        1279.0,
+        641.0
+      ]
+    },
+    {
+      "class_id": 14,
+      "class_name": "Ambulance",
+      "confidence": 0.8927,
+      "box_normalized": [
+        0.012206,
+        0.381665,
+        0.256208,
+        0.60184
+      ],
+      "box_pixels": [
+        15.9,
+        325.0,
+        333.1,
+        611.2
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8894,
+      "box_normalized": [
+        0.242926,
+        0.48634,
+        0.282639,
+        0.562886
+      ],
+      "box_pixels": [
+        315.8,
+        461.0,
+        367.4,
+        560.5
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.888,
+      "box_normalized": [
+        0.653633,
+        0.493624,
+        0.712302,
+        0.554487
+      ],
+      "box_pixels": [
+        849.7,
+        470.5,
+        926.0,
+        549.6
+      ]
+    },
+    {
+      "class_id": 14,
+      "class_name": "Ambulance",
+      "confidence": 0.8393,
+      "box_normalized": [
+        0.021212,
+        0.139952,
+        0.529939,
+        0.695267
+      ],
+      "box_pixels": [
+        27.6,
+        10.7,
+        688.9,
+        732.6
+      ]
+    },
+    {
+      "class_id": 10,
+      "class_name": "Tempo-traveller",
+      "confidence": 0.8045,
+      "box_normalized": [
+        0.026857,
+        0.390068,
+        0.273935,
+        0.699613
+      ],
+      "box_pixels": [
+        34.9,
+        335.9,
+        356.1,
+        738.3
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7649,
+      "box_normalized": [
+        0.425618,
+        0.486894,
+        0.45336,
+        0.538262
+      ],
+      "box_pixels": [
+        553.3,
+        461.8,
+        589.4,
+        528.5
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.729,
+      "box_normalized": [
+        0.357918,
+        0.472408,
+        0.386139,
+        0.508221
+      ],
+      "box_pixels": [
+        465.3,
+        442.9,
+        502.0,
+        489.5
+      ]
+    },
+    {
+      "class_id": 1,
+      "class_name": "Sedan",
+      "confidence": 0.6946,
+      "box_normalized": [
+        0.277588,
+        0.479814,
+        0.380793,
+        0.541463
+      ],
+      "box_pixels": [
+        360.9,
+        452.6,
+        495.0,
+        532.7
+      ]
+    }
+  ]
+}

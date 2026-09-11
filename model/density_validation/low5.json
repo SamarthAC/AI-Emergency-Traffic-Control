@@ -1,0 +1,121 @@
+{
+  "image": "low5.jpeg",
+  "image_width": 666,
+  "image_height": 460,
+  "device": "cuda",
+  "vehicle_count": 6,
+  "non_ambulance_vehicle_count": 6,
+  "ambulance_detected": false,
+  "ambulance_count": 0,
+  "highest_ambulance_confidence": null,
+  "class_counts": {
+    "Hatchback": 2,
+    "LCV": 1,
+    "Three-wheeler": 2,
+    "Truck": 1
+  },
+  "detections": [
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.9178,
+      "box_normalized": [
+        0.229557,
+        0.523264,
+        0.296858,
+        0.571044
+      ],
+      "box_pixels": [
+        152.9,
+        245.9,
+        197.7,
+        277.7
+      ]
+    },
+    {
+      "class_id": 8,
+      "class_name": "LCV",
+      "confidence": 0.8845,
+      "box_normalized": [
+        0.231066,
+        0.492333,
+        0.298859,
+        0.565763
+      ],
+      "box_pixels": [
+        153.9,
+        225.3,
+        199.0,
+        274.2
+      ]
+    },
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.81,
+      "box_normalized": [
+        0.356019,
+        0.493514,
+        0.440663,
+        0.625133
+      ],
+      "box_pixels": [
+        237.1,
+        226.1,
+        293.5,
+        313.8
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "Hatchback",
+      "confidence": 0.7549,
+      "box_normalized": [
+        0.431175,
+        0.494031,
+        0.491483,
+        0.558096
+      ],
+      "box_pixels": [
+        287.2,
+        226.4,
+        327.3,
+        269.1
+      ]
+    },
+    {
+      "class_id": 5,
+      "class_name": "Truck",
+      "confidence": 0.7474,
+      "box_normalized": [
+        0.190422,
+        0.483421,
+        0.297672,
+        0.568825
+      ],
+      "box_pixels": [
+        126.8,
+        219.4,
+        198.2,
+        276.3
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "Hatchback",
+      "confidence": 0.6656,
+      "box_normalized": [
+        0.482528,
+        0.498477,
+        0.570248,
+        0.567139
+      ],
+      "box_pixels": [
+        321.4,
+        229.4,
+        379.8,
+        275.1
+      ]
+    }
+  ]
+}

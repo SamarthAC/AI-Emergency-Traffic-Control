@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<types>
+    <type id="residential" priority="2" numLanes="1" speed="8.33"/>   <!-- 30 km/h -->
+    <type id="collector"   priority="4" numLanes="1" speed="11.11"/>  <!-- 40 km/h -->
+    <type id="arterial"    priority="6" numLanes="2" speed="13.89"/>  <!-- 50 km/h -->
+    <type id="ringroad"    priority="8" numLanes="2" speed="16.67"/>  <!-- 60 km/h -->
+    <type id="hospital"    priority="5" numLanes="1" speed="9.72"/>   <!-- 35 km/h -->
+</types>

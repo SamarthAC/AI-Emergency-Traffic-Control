@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <input>
+    <net-file value="bengaluru_v2.net.xml"/>
+  </input>
+  <time>
+    <begin value="0"/>
+    <end value="1800"/>
+    <step-length value="1"/>
+  </time>
+</configuration>
