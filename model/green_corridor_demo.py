@@ -232,10 +232,17 @@ def choose_green_phase(tls_id: str, required_indices: list[int]):
 
 
 class GreenCorridorController:
-    def __init__(self, ambulance_id: str, route_edges: list[str], edge_nodes: dict):
+    def __init__(
+        self,
+        ambulance_id: str,
+        route_edges: list[str],
+        edge_nodes: dict,
+        publisher=None,
+    ):
         self.ambulance_id = ambulance_id
         self.route_edges = route_edges
         self.edge_nodes = edge_nodes
+        self.publisher = publisher
 
         self.tls_ids = set(traci.trafficlight.getIDList())
 
@@ -314,6 +321,22 @@ class GreenCorridorController:
                 f"[GREEN CORRIDOR OFF] {tls_id} restored "
                 f"to program={saved['program']} phase={saved['phase']}"
             )
+
+            if self.publisher is not None:
+                self.publisher.publish(
+                    "SIGNAL_UPDATE",
+                    {
+                        "junction_id": tls_id,
+                        "state": "NORMAL",
+                        "green_corridor_active": False,
+                        "ambulance_id": self.ambulance_id,
+                        "restored_program": saved["program"],
+                        "restored_phase": saved["phase"],
+                        "incoming_edge": saved["incoming_edge"],
+                        "outgoing_edge": saved["outgoing_edge"],
+                        "simulation_time": traci.simulation.getTime(),
+                    },
+                )
         except Exception as exc:
             print(f"[WARN] Could not restore TLS {tls_id}: {exc}")
 
@@ -427,6 +450,25 @@ class GreenCorridorController:
             f"\n  Hold               : {GREEN_HOLD_SECONDS:.0f} s\n"
         )
 
+        if self.publisher is not None:
+            self.publisher.publish(
+                "SIGNAL_UPDATE",
+                {
+                    "junction_id": junction,
+                    "state": "GREEN_CORRIDOR_ACTIVE",
+                    "green_corridor_active": True,
+                    "ambulance_id": self.ambulance_id,
+                    "incoming_edge": incoming_edge,
+                    "outgoing_edge": outgoing_edge,
+                    "distance_to_signal_m": round(distance, 2),
+                    "controlled_links": indices,
+                    "selected_phase": green_phase,
+                    "phase_state": phase_state,
+                    "hold_seconds": GREEN_HOLD_SECONDS,
+                    "simulation_time": traci.simulation.getTime(),
+                },
+            )
+
 
 def main():
     global PREEMPT_DISTANCE_M, GREEN_HOLD_SECONDS
@@ -504,7 +546,7 @@ def main():
 
         # Temporary because the existing background auto_west flow contains
         # an invalid route. Remove this after fixing the .rou.xml flow.
-        # "--ignore-route-errors",
+        "--ignore-route-errors",
     ]
 
     print("\nStarting SUMO-GUI...")

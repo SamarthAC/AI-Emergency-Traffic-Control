@@ -1,9 +1,18 @@
 r"""
-FULL AI emergency demo:
-V4 CNN -> traffic density -> SUMO edge scores -> A* -> TraCI ambulance
--> adaptive Green Corridor.
+AI Smart Ambulance - backend-connected end-to-end demo.
 
-Place this file in:
+Runtime chain:
+Real road images
+-> V4 CNN
+-> traffic density
+-> SUMO edge scores
+-> congestion-aware A*
+-> TraCI ambulance
+-> adaptive Green Corridor
+-> FastAPI /events
+-> WebSocket dashboard
+
+Place in:
     AI Traffic Control\model\ai_emergency_demo.py
 
 Required beside it:
@@ -12,35 +21,49 @@ Required beside it:
     edge_traffic_manager.py
     traffic_routing.py
     green_corridor_demo.py
-    model_v4.py
-    traffic_detector_v4_best.pth
+    backend_bridge.py
 
-Example:
-    python ai_emergency_demo.py ^
-      --camera CAM_HOSPITAL_DIRECT_1 density_test\high2.jpg ^
-      --camera CAM_HOSPITAL_DIRECT_2 density_test\high3.jpg ^
-      --camera CAM_HOSPITAL_DIRECT_3 density_test\high4.jpg ^
-      --camera CAM_ORR_NORTH density_test\low1.jpg ^
-      --camera CAM_ORR_SOUTH density_test\low2.jpg
+FastAPI must be running on http://127.0.0.1:8000 unless another
+--backend-url is supplied.
 """
 
 from __future__ import annotations
 
 import argparse
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from inference_v4 import TrafficInferenceV4
 from edge_traffic_manager import EdgeTrafficManager
 from traffic_routing import SumoRoadGraph
+from backend_bridge import BackendEventPublisher
 
-# Reuse the already-tested Green Corridor implementation instead of
-# duplicating its TraCI / signal-phase logic.
 import green_corridor_demo as gc
 
 
 AMBULANCE_ID = "AI_AMB_001"
 ROUTE_ID = "AI_DYNAMIC_EMERGENCY_ROUTE"
+
+# Send live vehicle state every N simulation seconds.
+VEHICLE_PUBLISH_INTERVAL_S = 2.0
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def emit_log(publisher, message: str, level: str = "INFO", **extra):
+    if publisher is None:
+        return
+
+    data = {
+        "level": level,
+        "message": message,
+        "timestamp": utc_now(),
+    }
+    data.update(extra)
+    publisher.publish("LOG", data)
 
 
 def resolve_image_path(raw_path: str, model_dir: Path) -> Path:
@@ -78,6 +101,7 @@ def analyse_cameras(
     manager: EdgeTrafficManager,
     camera_args,
     model_dir: Path,
+    publisher: BackendEventPublisher,
 ):
     print("\n" + "=" * 96)
     print("STEP 1 - REAL V4 CNN TRAFFIC ANALYSIS")
@@ -98,33 +122,30 @@ def analyse_cameras(
             )
 
         inference = detector.predict(image)
-        density = manager.update_from_inference(
-            camera_id,
-            inference,
-        )
+        density = manager.update_from_inference(camera_id, inference)
 
         print(f"\n{camera_id}")
         print("  Image              :", image.name)
         print("  CNN detections     :", inference["vehicle_count"])
-        print(
-            "  Non-ambulance      :",
-            inference["non_ambulance_vehicle_count"],
-        )
-        print(
-            "  Ambulance detected :",
-            inference["ambulance_detected"],
-        )
-        print(
-            f"  Traffic score      : "
-            f"{density['traffic_score']:.2f}"
-        )
-        print(
-            "  Traffic level      :",
-            density["traffic_level"],
-        )
-        print(
-            "  SUMO edges         :",
-            ", ".join(density["mapped_edges"]),
+        print("  Non-ambulance      :", inference["non_ambulance_vehicle_count"])
+        print("  Ambulance detected :", inference["ambulance_detected"])
+        print(f"  Traffic score      : {density['traffic_score']:.2f}")
+        print("  Traffic level      :", density["traffic_level"])
+        print("  SUMO edges         :", ", ".join(density["mapped_edges"]))
+
+        publisher.publish(
+            "TRAFFIC_OVERVIEW",
+            {
+                "camera_id": camera_id,
+                "image": image.name,
+                "edge_ids": density["mapped_edges"],
+                "vehicle_count": inference["non_ambulance_vehicle_count"],
+                "cnn_detection_count": inference["vehicle_count"],
+                "ambulance_detected": inference["ambulance_detected"],
+                "traffic_score": round(density["traffic_score"], 2),
+                "traffic_level": density["traffic_level"],
+                "timestamp": utc_now(),
+            },
         )
 
 
@@ -134,8 +155,6 @@ def build_ai_route(
     pickup: str,
     hospital: str,
 ):
-    # One graph, one resolved traffic state.
-    # Both legs therefore use the same current AI traffic knowledge.
     leg1 = graph.astar(station, pickup)
     leg2 = graph.astar(pickup, hospital)
 
@@ -144,12 +163,49 @@ def build_ai_route(
             "A* could not calculate one of the ambulance route legs."
         )
 
-    full_route = (
-        list(leg1["edge_path"])
-        + list(leg2["edge_path"])
-    )
-
+    full_route = list(leg1["edge_path"]) + list(leg2["edge_path"])
     return leg1, leg2, full_route
+
+
+def publish_route(
+    publisher: BackendEventPublisher,
+    leg1: dict,
+    leg2: dict,
+    full_route: list[str],
+    station: str,
+    pickup: str,
+    hospital: str,
+):
+    publisher.publish(
+        "AI_ROUTE",
+        {
+            "ambulance_id": AMBULANCE_ID,
+            "station": station,
+            "pickup": pickup,
+            "destination": hospital,
+            "route": full_route,
+            "station_to_pickup": {
+                "junction_path": leg1["junction_path"],
+                "edge_path": leg1["edge_path"],
+                "distance_m": round(leg1["distance_m"], 2),
+                "free_flow_time_s": round(leg1["base_travel_time_s"], 2),
+                "dynamic_cost_s": round(leg1["dynamic_cost_s"], 2),
+            },
+            "pickup_to_hospital": {
+                "junction_path": leg2["junction_path"],
+                "edge_path": leg2["edge_path"],
+                "distance_m": round(leg2["distance_m"], 2),
+                "free_flow_time_s": round(leg2["base_travel_time_s"], 2),
+                "dynamic_cost_s": round(leg2["dynamic_cost_s"], 2),
+            },
+            # Routing cost, not measured SUMO arrival time.
+            "route_cost_s": round(
+                leg1["dynamic_cost_s"] + leg2["dynamic_cost_s"],
+                2,
+            ),
+            "timestamp": utc_now(),
+        },
+    )
 
 
 def run_sumo(
@@ -161,8 +217,10 @@ def run_sumo(
     threshold: float,
     hold: float,
     delay_ms: int,
+    pickup: str,
+    hospital: str,
+    publisher: BackendEventPublisher,
 ):
-    # Update the tested Green Corridor module's runtime settings.
     gc.PREEMPT_DISTANCE_M = max(20.0, threshold)
     gc.GREEN_HOLD_SECONDS = max(5.0, hold)
 
@@ -183,30 +241,28 @@ def run_sumo(
     ]
 
     print("\n" + "=" * 96)
-    print("STEP 3 - SUMO + TRACI + GREEN CORRIDOR")
+    print("STEP 3 - SUMO + TRACI + GREEN CORRIDOR + LIVE BACKEND EVENTS")
     print("=" * 96)
     print("Starting SUMO-GUI...")
-    print(
-        f"Green trigger : {gc.PREEMPT_DISTANCE_M:.0f} m before TLS"
-    )
-    print(
-        f"Green hold    : {gc.GREEN_HOLD_SECONDS:.0f} s"
+    print(f"Green trigger : {gc.PREEMPT_DISTANCE_M:.0f} m before TLS")
+    print(f"Green hold    : {gc.GREEN_HOLD_SECONDS:.0f} s")
+
+    emit_log(
+        publisher,
+        "Starting SUMO emergency simulation.",
+        route=full_route,
     )
 
     gc.traci.start(sumo_cmd)
 
     controller = None
+    arrived = False
 
     try:
-        # Initialize SUMO.
         gc.traci.simulationStep()
 
-        # Register the EXACT AI-selected full route.
         if ROUTE_ID not in gc.traci.route.getIDList():
-            gc.traci.route.add(
-                ROUTE_ID,
-                full_route,
-            )
+            gc.traci.route.add(ROUTE_ID, full_route)
 
         gc.traci.vehicle.add(
             vehID=AMBULANCE_ID,
@@ -224,46 +280,76 @@ def run_sumo(
         )
 
         try:
-            gc.traci.gui.trackVehicle(
-                "View #0",
-                AMBULANCE_ID,
-            )
-            gc.traci.gui.setZoom(
-                "View #0",
-                1400,
-            )
+            gc.traci.gui.trackVehicle("View #0", AMBULANCE_ID)
+            gc.traci.gui.setZoom("View #0", 1400)
         except Exception:
             pass
 
-        # Generic controller: it derives signal movements from whatever
-        # route A* selected above.
         controller = gc.GreenCorridorController(
             AMBULANCE_ID,
             full_route,
             edge_nodes,
+            publisher=publisher,
+        )
+
+        publisher.publish(
+            "AMBULANCE_STATUS",
+            {
+                "id": AMBULANCE_ID,
+                "status": "DISPATCHED",
+                "pickup": pickup,
+                "destination": hospital,
+                "route": full_route,
+                "timestamp": utc_now(),
+            },
+        )
+
+        emit_log(
+            publisher,
+            f"{AMBULANCE_ID} dispatched on AI-selected route.",
         )
 
         print("\nAmbulance spawned:", AMBULANCE_ID)
-        print(
-            "The ambulance is following the AI-selected route, "
-            "not a hard-coded hospital path."
-        )
-        print("Green Corridor controller ACTIVE.\n")
+        print("The ambulance is following the AI-selected route.")
+        print("Green Corridor controller ACTIVE.")
+        print("Live backend publishing ACTIVE.\n")
 
         last_edge = None
         pickup_announced = False
         step = 0
+        last_vehicle_publish_time = -9999.0
 
         while gc.traci.simulation.getMinExpectedNumber() > 0:
             gc.traci.simulationStep()
             step += 1
 
+            sim_time = gc.traci.simulation.getTime()
             vehicle_ids = gc.traci.vehicle.getIDList()
 
             if AMBULANCE_ID not in vehicle_ids:
                 if step > 3:
                     if controller:
                         controller.restore_all()
+
+                    arrived = True
+
+                    publisher.publish(
+                        "AMBULANCE_STATUS",
+                        {
+                            "id": AMBULANCE_ID,
+                            "status": "ARRIVED",
+                            "pickup": pickup,
+                            "destination": hospital,
+                            "simulation_time": sim_time,
+                            "timestamp": utc_now(),
+                        },
+                    )
+
+                    emit_log(
+                        publisher,
+                        f"{AMBULANCE_ID} reached hospital {hospital}.",
+                        simulation_time=sim_time,
+                    )
 
                     print(
                         "\n>>> Ambulance reached destination "
@@ -275,16 +361,30 @@ def run_sumo(
 
             controller.update()
 
-            road_id = gc.traci.vehicle.getRoadID(
-                AMBULANCE_ID
-            )
-            route_index = gc.traci.vehicle.getRouteIndex(
-                AMBULANCE_ID
-            )
-            speed_kmh = (
-                gc.traci.vehicle.getSpeed(AMBULANCE_ID)
-                * 3.6
-            )
+            road_id = gc.traci.vehicle.getRoadID(AMBULANCE_ID)
+            route_index = gc.traci.vehicle.getRouteIndex(AMBULANCE_ID)
+            speed_kmh = gc.traci.vehicle.getSpeed(AMBULANCE_ID) * 3.6
+            lane_id = gc.traci.vehicle.getLaneID(AMBULANCE_ID)
+
+            position = gc.traci.vehicle.getPosition(AMBULANCE_ID)
+            x, y = float(position[0]), float(position[1])
+
+            if sim_time - last_vehicle_publish_time >= VEHICLE_PUBLISH_INTERVAL_S:
+                publisher.publish(
+                    "VEHICLE_UPDATE",
+                    {
+                        "vehicle_id": AMBULANCE_ID,
+                        "edge_id": road_id,
+                        "lane_id": lane_id,
+                        "route_index": route_index,
+                        "route_length": len(full_route),
+                        "speed_kmh": round(speed_kmh, 2),
+                        "x": round(x, 2),
+                        "y": round(y, 2),
+                        "simulation_time": sim_time,
+                    },
+                )
+                last_vehicle_publish_time = sim_time
 
             if (
                 road_id
@@ -292,37 +392,79 @@ def run_sumo(
                 and road_id != last_edge
             ):
                 print(
-                    f"[t={gc.traci.simulation.getTime():6.1f}s] "
+                    f"[t={sim_time:6.1f}s] "
                     f"edge={road_id:12s} "
                     f"speed={speed_kmh:5.1f} km/h "
                     f"route_index={route_index}/{len(full_route)-1}"
                 )
+
+                emit_log(
+                    publisher,
+                    f"Ambulance entered {road_id}.",
+                    edge_id=road_id,
+                    route_index=route_index,
+                    simulation_time=sim_time,
+                )
+
                 last_edge = road_id
 
             if (
                 not pickup_announced
                 and route_index >= len(leg1["edge_path"])
             ):
-                print("\n>>> EMERGENCY PICKUP J23 REACHED")
+                print(f"\n>>> EMERGENCY PICKUP {pickup} REACHED")
                 print(
-                    ">>> Continuing on the AI-selected "
-                    "hospital route to J47.\n"
+                    f">>> Continuing on the AI-selected hospital route "
+                    f"to {hospital}.\n"
                 )
+
+                publisher.publish(
+                    "AMBULANCE_STATUS",
+                    {
+                        "id": AMBULANCE_ID,
+                        "status": "EN_ROUTE_TO_HOSPITAL",
+                        "pickup": pickup,
+                        "pickup_reached": True,
+                        "destination": hospital,
+                        "simulation_time": sim_time,
+                        "timestamp": utc_now(),
+                    },
+                )
+
+                emit_log(
+                    publisher,
+                    f"Emergency pickup {pickup} reached.",
+                    simulation_time=sim_time,
+                )
+
                 pickup_announced = True
 
             time.sleep(0.01)
 
+        if not arrived:
+            publisher.publish(
+                "AMBULANCE_STATUS",
+                {
+                    "id": AMBULANCE_ID,
+                    "status": "SIMULATION_ENDED",
+                    "pickup": pickup,
+                    "destination": hospital,
+                    "timestamp": utc_now(),
+                },
+            )
+
         print("\n" + "=" * 96)
         print("FULL AI EMERGENCY DEMO COMPLETE")
         print("=" * 96)
-        print("Validated runtime chain:")
+        print("Runtime chain:")
         print("  V4 CNN")
         print("  -> traffic density")
         print("  -> SUMO edge traffic scores")
         print("  -> A* dynamic route")
         print("  -> TraCI ambulance movement")
         print("  -> Green Corridor preemption/restoration")
-        print("  -> Hospital arrival")
+        print("  -> FastAPI event publishing")
+        print("  -> WebSocket-ready dashboard stream")
         print("=" * 96)
 
     finally:
@@ -341,8 +483,8 @@ def run_sumo(
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "End-to-end AI smart ambulance demo using real V4 CNN traffic "
-            "inference, dynamic A* routing, SUMO TraCI and Green Corridor."
+            "End-to-end AI smart ambulance demo with FastAPI/WebSocket "
+            "backend publishing."
         )
     )
 
@@ -352,45 +494,38 @@ def main():
         action="append",
         metavar=("CAMERA_ID", "IMAGE_PATH"),
         required=True,
-        help=(
-            "Camera ID + road image. Repeat for each monitored road/camera."
-        ),
     )
-
-    parser.add_argument(
-        "--station",
-        default="J01",
-    )
-    parser.add_argument(
-        "--pickup",
-        default="J23",
-    )
-    parser.add_argument(
-        "--hospital",
-        default="J47",
-    )
+    parser.add_argument("--station", default="J01")
+    parser.add_argument("--pickup", default="J23")
+    parser.add_argument("--hospital", default="J47")
     parser.add_argument(
         "--threshold",
         type=float,
         default=gc.PREEMPT_DISTANCE_M,
-        help="Green Corridor preemption distance in metres.",
     )
     parser.add_argument(
         "--hold",
         type=float,
         default=gc.GREEN_HOLD_SECONDS,
-        help="Green phase hold duration in seconds.",
     )
     parser.add_argument(
         "--delay",
         type=int,
         default=60,
-        help="SUMO-GUI delay in milliseconds.",
     )
     parser.add_argument(
         "--traffic-json",
         default=None,
-        help="Optional path for the full resolved edge traffic JSON.",
+    )
+    parser.add_argument(
+        "--backend-url",
+        default="http://127.0.0.1:8000",
+        help="FastAPI backend URL.",
+    )
+    parser.add_argument(
+        "--no-backend",
+        action="store_true",
+        help="Run simulation without sending backend events.",
     )
 
     args = parser.parse_args()
@@ -413,22 +548,29 @@ def main():
     )
 
     if not net_file.exists():
-        raise FileNotFoundError(
-            f"SUMO network not found:\n{net_file}"
-        )
+        raise FileNotFoundError(f"SUMO network not found:\n{net_file}")
 
     if not cfg_file.exists():
-        raise FileNotFoundError(
-            f"SUMO config not found:\n{cfg_file}"
-        )
+        raise FileNotFoundError(f"SUMO config not found:\n{cfg_file}")
+
+    publisher = BackendEventPublisher(
+        base_url=args.backend_url,
+        enabled=not args.no_backend,
+    )
 
     print("\n" + "=" * 96)
-    print("AI SMART AMBULANCE - END-TO-END DEMO")
+    print("AI SMART AMBULANCE - LIVE BACKEND DEMO")
     print("=" * 96)
-    print("Station  :", args.station)
-    print("Pickup   :", args.pickup)
-    print("Hospital :", args.hospital)
+    print("Station     :", args.station)
+    print("Pickup      :", args.pickup)
+    print("Hospital    :", args.hospital)
+    print("Backend     :", "OFF" if args.no_backend else args.backend_url)
     print("=" * 96)
+
+    emit_log(
+        publisher,
+        "AI emergency pipeline started.",
+    )
 
     print("\nLoading TrafficDetectorV4 once...")
     detector = TrafficInferenceV4()
@@ -441,14 +583,11 @@ def main():
         manager,
         args.camera,
         model_dir,
+        publisher,
     )
 
-    # Build SUMO graph and assign EVERY edge either:
-    # - a real AI score, or
-    # - the configured unobserved-road baseline.
     graph = SumoRoadGraph(net_file)
     manager.apply_to_graph(graph)
-
     manager.print_status()
 
     if args.traffic_json is None:
@@ -456,9 +595,7 @@ def main():
     else:
         traffic_json = Path(args.traffic_json)
 
-    manager.save_routing_json(
-        traffic_json
-    )
+    manager.save_routing_json(traffic_json)
 
     print("\nTraffic state saved to:")
     print(traffic_json)
@@ -474,7 +611,6 @@ def main():
         "STEP 2A - AI ROUTE: AMBULANCE STATION -> PICKUP",
         leg1,
     )
-
     print_route(
         "STEP 2B - AI ROUTE: PICKUP -> HOSPITAL",
         leg2,
@@ -482,6 +618,22 @@ def main():
 
     print("\nFULL SUMO EDGE ROUTE:")
     print(" -> ".join(full_route))
+
+    publish_route(
+        publisher,
+        leg1,
+        leg2,
+        full_route,
+        args.station,
+        args.pickup,
+        args.hospital,
+    )
+
+    emit_log(
+        publisher,
+        "Congestion-aware A* route calculated.",
+        full_route=full_route,
+    )
 
     run_sumo(
         cfg_file=cfg_file,
@@ -492,6 +644,9 @@ def main():
         threshold=args.threshold,
         hold=args.hold,
         delay_ms=args.delay,
+        pickup=args.pickup,
+        hospital=args.hospital,
+        publisher=publisher,
     )
 
 
