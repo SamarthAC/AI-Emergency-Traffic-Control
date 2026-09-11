@@ -1,4 +1,3 @@
--- Active: 1788268983350@@127.0.0.1@5432
 import json
 import argparse
 from pathlib import Path
