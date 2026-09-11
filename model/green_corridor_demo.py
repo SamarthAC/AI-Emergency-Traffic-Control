@@ -1,0 +1,618 @@
+r"""
+Green Corridor demo for the Bengaluru structured SUMO network.
+
+Place this file in:
+    AI Traffic Control\model\
+
+Required beside it:
+    traffic_routing.py
+
+Run:
+    python green_corridor_demo.py
+
+What this script proves:
+1. A* computes the ambulance route.
+2. TraCI inserts the ambulance into SUMO.
+3. The controller detects the next traffic-light junction.
+4. It finds the exact incoming -> outgoing ambulance movement.
+5. It selects an EXISTING safe SUMO phase that gives that movement green.
+6. It holds the green while the ambulance approaches/crosses.
+7. It restores the normal traffic-light program after passage.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import time
+import argparse
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+
+# ---------------------------------------------------------------------
+# SUMO / TraCI import
+# ---------------------------------------------------------------------
+def load_traci():
+    try:
+        import traci
+        return traci
+    except ImportError:
+        pass
+
+    candidates = [
+        Path(r"C:\Program Files (x86)\Eclipse\Sumo\tools"),
+        Path(r"C:\Program Files\Eclipse\Sumo\tools"),
+    ]
+
+    sumo_home = os.environ.get("SUMO_HOME")
+    if sumo_home:
+        candidates.insert(0, Path(sumo_home) / "tools")
+
+    for tools_dir in candidates:
+        if tools_dir.exists():
+            sys.path.append(str(tools_dir))
+            try:
+                import traci
+                return traci
+            except ImportError:
+                continue
+
+    raise RuntimeError(
+        "Could not import TraCI. Check your SUMO tools folder or SUMO_HOME."
+    )
+
+
+traci = load_traci()
+
+try:
+    from traffic_routing import SumoRoadGraph
+except ImportError as exc:
+    raise RuntimeError(
+        "Could not import traffic_routing.py. Keep this file in the same model folder."
+    ) from exc
+
+
+# ---------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------
+AMBULANCE_ID = "AI_AMB_001"
+ROUTE_ID = "AI_GREEN_CORRIDOR_ROUTE"
+
+# Start preemption this far before the signal.
+PREEMPT_DISTANCE_M = 220.0
+
+# Keep selected green alive long enough for the ambulance to pass.
+GREEN_HOLD_SECONDS = 30.0
+
+# Red ambulance in SUMO.
+AMBULANCE_COLOR = (255, 0, 0, 255)
+
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+def find_sumo_gui() -> str:
+    candidates = [
+        Path(r"C:\Program Files (x86)\Eclipse\Sumo\bin\sumo-gui.exe"),
+        Path(r"C:\Program Files\Eclipse\Sumo\bin\sumo-gui.exe"),
+    ]
+
+    sumo_home = os.environ.get("SUMO_HOME")
+    if sumo_home:
+        candidates.insert(0, Path(sumo_home) / "bin" / "sumo-gui.exe")
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    return "sumo-gui"
+
+
+def parse_edge_nodes(net_file: Path):
+    """
+    Returns:
+        edge_nodes[edge_id] = (from_junction, to_junction)
+    """
+    root = ET.parse(net_file).getroot()
+    edge_nodes = {}
+
+    for edge in root.findall("edge"):
+        edge_id = edge.get("id", "")
+        if (
+            not edge_id
+            or edge_id.startswith(":")
+            or edge.get("function") == "internal"
+        ):
+            continue
+
+        from_node = edge.get("from")
+        to_node = edge.get("to")
+
+        if from_node and to_node:
+            edge_nodes[edge_id] = (from_node, to_node)
+
+    return edge_nodes
+
+
+def build_full_route(graph):
+    leg1 = graph.astar("J01", "J23")
+    leg2 = graph.astar("J23", "J47")
+
+    full_edges = list(leg1["edge_path"]) + list(leg2["edge_path"])
+    return leg1, leg2, full_edges
+
+
+def movement_link_indices(tls_id: str, incoming_edge: str, outgoing_edge: str):
+    """
+    Find SUMO signal link indices controlling the requested movement.
+
+    traci.trafficlight.getControlledLinks(tls_id) returns entries such as:
+        (
+            (incomingLane, outgoingLane, viaLane),
+            ...
+        )
+
+    A road may have multiple lanes, so one movement can correspond to
+    multiple signal indices.
+    """
+    controlled = traci.trafficlight.getControlledLinks(tls_id)
+    indices = []
+
+    incoming_prefix = incoming_edge + "_"
+    outgoing_prefix = outgoing_edge + "_"
+
+    for signal_index, connections in enumerate(controlled):
+        if not connections:
+            continue
+
+        for connection in connections:
+            incoming_lane = connection[0]
+            outgoing_lane = connection[1]
+
+            if (
+                incoming_lane.startswith(incoming_prefix)
+                and outgoing_lane.startswith(outgoing_prefix)
+            ):
+                indices.append(signal_index)
+                break
+
+    return sorted(set(indices))
+
+
+def choose_green_phase(tls_id: str, required_indices: list[int]):
+    """
+    Select an EXISTING traffic-light phase in which every signal index
+    required by the ambulance movement is green ('G' or 'g').
+
+    We do not create an unsafe all-green state.
+    """
+    if not required_indices:
+        return None
+
+    logics = traci.trafficlight.getAllProgramLogics(tls_id)
+    current_program = traci.trafficlight.getProgram(tls_id)
+
+    # Prefer the active program.
+    logic = None
+    for item in logics:
+        if item.programID == current_program:
+            logic = item
+            break
+
+    if logic is None and logics:
+        logic = logics[0]
+
+    if logic is None:
+        return None
+
+    candidates = []
+
+    for phase_index, phase in enumerate(logic.phases):
+        state = phase.state
+
+        valid = True
+        for idx in required_indices:
+            if idx >= len(state) or state[idx] not in ("G", "g"):
+                valid = False
+                break
+
+        if valid:
+            # Prefer phases with fewer total greens, since they are usually
+            # more movement-specific while remaining part of the legal program.
+            green_count = sum(1 for c in state if c in ("G", "g"))
+            candidates.append((green_count, phase_index, state))
+
+    if not candidates:
+        return None
+
+    candidates.sort()
+    _, phase_index, state = candidates[0]
+    return phase_index, state
+
+
+class GreenCorridorController:
+    def __init__(self, ambulance_id: str, route_edges: list[str], edge_nodes: dict):
+        self.ambulance_id = ambulance_id
+        self.route_edges = route_edges
+        self.edge_nodes = edge_nodes
+
+        self.tls_ids = set(traci.trafficlight.getIDList())
+
+        # tls_id -> saved state
+        self.active = {}
+
+        # Avoid repeatedly preempting the same junction after it is passed.
+        self.completed_tls = set()
+
+        print("\nTraffic lights available in SUMO:", len(self.tls_ids))
+        self.print_route_signals()
+
+    def print_route_signals(self):
+        print("\nGREEN CORRIDOR SIGNAL PLAN")
+        print("-" * 90)
+
+        count = 0
+        for i in range(len(self.route_edges) - 1):
+            incoming = self.route_edges[i]
+            outgoing = self.route_edges[i + 1]
+
+            if incoming not in self.edge_nodes:
+                continue
+
+            junction = self.edge_nodes[incoming][1]
+
+            if junction in self.tls_ids:
+                indices = movement_link_indices(junction, incoming, outgoing)
+                phase = choose_green_phase(junction, indices)
+
+                if phase is None:
+                    phase_text = "NO GREEN PHASE FOUND"
+                else:
+                    phase_text = f"phase {phase[0]}"
+
+                print(
+                    f"{junction:5s}: "
+                    f"{incoming:12s} -> {outgoing:12s} "
+                    f"links={indices}  {phase_text}"
+                )
+                count += 1
+
+        print("-" * 90)
+        print(f"Traffic-light junctions on ambulance route: {count}\n")
+
+    def _distance_to_end_of_current_edge(self):
+        road_id = traci.vehicle.getRoadID(self.ambulance_id)
+
+        if not road_id or road_id.startswith(":"):
+            return None
+
+        lane_id = traci.vehicle.getLaneID(self.ambulance_id)
+        lane_position = traci.vehicle.getLanePosition(self.ambulance_id)
+
+        try:
+            lane_length = traci.lane.getLength(lane_id)
+        except Exception:
+            return None
+
+        return max(0.0, lane_length - lane_position)
+
+    def _restore(self, tls_id: str):
+        saved = self.active.pop(tls_id, None)
+        if not saved:
+            return
+
+        try:
+            traci.trafficlight.setProgram(tls_id, saved["program"])
+            traci.trafficlight.setPhase(tls_id, saved["phase"])
+            traci.trafficlight.setPhaseDuration(
+                tls_id,
+                max(1.0, saved["remaining_duration"])
+            )
+
+            print(
+                f"[GREEN CORRIDOR OFF] {tls_id} restored "
+                f"to program={saved['program']} phase={saved['phase']}"
+            )
+        except Exception as exc:
+            print(f"[WARN] Could not restore TLS {tls_id}: {exc}")
+
+        self.completed_tls.add(tls_id)
+
+    def restore_all(self):
+        for tls_id in list(self.active.keys()):
+            self._restore(tls_id)
+
+    def update(self):
+        if self.ambulance_id not in traci.vehicle.getIDList():
+            self.restore_all()
+            return
+
+        route_index = traci.vehicle.getRouteIndex(self.ambulance_id)
+
+        if route_index < 0 or route_index >= len(self.route_edges):
+            return
+
+        current_road = traci.vehicle.getRoadID(self.ambulance_id)
+
+        # -------------------------------------------------------------
+        # Release any TLS after ambulance has advanced past its incoming edge.
+        # -------------------------------------------------------------
+        for tls_id, saved in list(self.active.items()):
+            if route_index > saved["incoming_route_index"]:
+                self._restore(tls_id)
+
+        # Internal intersection edge: do not initiate a new preemption.
+        if not current_road or current_road.startswith(":"):
+            return
+
+        # Need a following route edge to define the movement.
+        if route_index >= len(self.route_edges) - 1:
+            return
+
+        incoming_edge = self.route_edges[route_index]
+        outgoing_edge = self.route_edges[route_index + 1]
+
+        # During lane transitions SUMO may briefly report something unexpected.
+        if current_road != incoming_edge:
+            return
+
+        edge_data = self.edge_nodes.get(incoming_edge)
+        if not edge_data:
+            return
+
+        junction = edge_data[1]
+
+        if junction not in self.tls_ids:
+            return
+
+        if junction in self.completed_tls or junction in self.active:
+            return
+
+        distance = self._distance_to_end_of_current_edge()
+        if distance is None or distance > PREEMPT_DISTANCE_M:
+            return
+
+        indices = movement_link_indices(
+            junction,
+            incoming_edge,
+            outgoing_edge
+        )
+
+        selected = choose_green_phase(junction, indices)
+
+        if selected is None:
+            print(
+                f"[WARN] {junction}: could not find an existing green phase "
+                f"for {incoming_edge} -> {outgoing_edge}; leaving normal control."
+            )
+            self.completed_tls.add(junction)
+            return
+
+        green_phase, phase_state = selected
+
+        current_program = traci.trafficlight.getProgram(junction)
+        current_phase = traci.trafficlight.getPhase(junction)
+
+        try:
+            next_switch = traci.trafficlight.getNextSwitch(junction)
+            now = traci.simulation.getTime()
+            remaining = max(1.0, next_switch - now)
+        except Exception:
+            remaining = 5.0
+
+        self.active[junction] = {
+            "program": current_program,
+            "phase": current_phase,
+            "remaining_duration": remaining,
+            "incoming_route_index": route_index,
+            "incoming_edge": incoming_edge,
+            "outgoing_edge": outgoing_edge,
+        }
+
+        # We deliberately use an EXISTING legal SUMO phase.
+        traci.trafficlight.setPhase(junction, green_phase)
+        traci.trafficlight.setPhaseDuration(
+            junction,
+            GREEN_HOLD_SECONDS
+        )
+
+        print(
+            f"\n[GREEN CORRIDOR ON]  TLS={junction}"
+            f"\n  Ambulance movement : {incoming_edge} -> {outgoing_edge}"
+            f"\n  Distance to signal : {distance:.1f} m"
+            f"\n  Controlled links   : {indices}"
+            f"\n  Selected phase     : {green_phase}"
+            f"\n  Phase state        : {phase_state}"
+            f"\n  Hold               : {GREEN_HOLD_SECONDS:.0f} s\n"
+        )
+
+
+def main():
+    global PREEMPT_DISTANCE_M, GREEN_HOLD_SECONDS
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=PREEMPT_DISTANCE_M,
+        help="Preemption distance before signal in metres."
+    )
+    parser.add_argument(
+        "--hold",
+        type=float,
+        default=GREEN_HOLD_SECONDS,
+        help="How long to hold the ambulance green phase."
+    )
+    args = parser.parse_args()
+
+    PREEMPT_DISTANCE_M = max(20.0, args.threshold)
+    GREEN_HOLD_SECONDS = max(5.0, args.hold)
+
+    script_dir = Path(__file__).resolve().parent
+    project_dir = script_dir.parent
+
+    net_file = (
+        project_dir
+        / "simulation"
+        / "bengaluru_structured"
+        / "bengaluru_structured.net.xml"
+    )
+
+    cfg_file = (
+        project_dir
+        / "simulation"
+        / "bengaluru_structured"
+        / "bengaluru_structured.sumocfg"
+    )
+
+    if not net_file.exists():
+        raise FileNotFoundError(f"Network not found:\n{net_file}")
+
+    if not cfg_file.exists():
+        raise FileNotFoundError(f"SUMO config not found:\n{cfg_file}")
+
+    graph = SumoRoadGraph(net_file)
+    leg1, leg2, full_route = build_full_route(graph)
+    edge_nodes = parse_edge_nodes(net_file)
+
+    print("\n" + "=" * 92)
+    print("AI GREEN CORRIDOR DEMO")
+    print("=" * 92)
+    print("Station  : J01")
+    print("Pickup   : J23")
+    print("Hospital : J47")
+    print("Leg 1    :", " -> ".join(leg1["junction_path"]))
+    print("Leg 2    :", " -> ".join(leg2["junction_path"]))
+    print("Edges    :", " -> ".join(full_route))
+    print(f"Trigger  : {PREEMPT_DISTANCE_M:.0f} m before TLS")
+    print(f"Hold     : {GREEN_HOLD_SECONDS:.0f} s")
+    print("=" * 92)
+
+    sumo_gui = find_sumo_gui()
+
+    sumo_log = script_dir / "sumo_green_corridor.log"
+    sumo_error_log = script_dir / "sumo_green_corridor_error.log"
+
+    sumo_cmd = [
+        sumo_gui,
+        "-c", str(cfg_file),
+        "--start",
+        "--delay", "60",
+        "--log", str(sumo_log),
+        "--error-log", str(sumo_error_log),
+
+        # Temporary because the existing background auto_west flow contains
+        # an invalid route. Remove this after fixing the .rou.xml flow.
+        # "--ignore-route-errors",
+    ]
+
+    print("\nStarting SUMO-GUI...")
+    traci.start(sumo_cmd)
+
+    controller = None
+
+    try:
+        traci.simulationStep()
+
+        if ROUTE_ID not in traci.route.getIDList():
+            traci.route.add(ROUTE_ID, full_route)
+
+        traci.vehicle.add(
+            vehID=AMBULANCE_ID,
+            routeID=ROUTE_ID,
+            typeID="ambulance",
+            depart="now",
+            departLane="best",
+            departPos="base",
+            departSpeed="max",
+        )
+
+        traci.vehicle.setColor(AMBULANCE_ID, AMBULANCE_COLOR)
+
+        try:
+            traci.gui.trackVehicle("View #0", AMBULANCE_ID)
+            traci.gui.setZoom("View #0", 1400)
+        except Exception:
+            pass
+
+        controller = GreenCorridorController(
+            AMBULANCE_ID,
+            full_route,
+            edge_nodes
+        )
+
+        print(f"Ambulance spawned: {AMBULANCE_ID}")
+        print("Green Corridor controller ACTIVE.\n")
+
+        last_edge = None
+        pickup_announced = False
+        step = 0
+
+        while traci.simulation.getMinExpectedNumber() > 0:
+            traci.simulationStep()
+            step += 1
+
+            vehicle_ids = traci.vehicle.getIDList()
+
+            if AMBULANCE_ID not in vehicle_ids:
+                if step > 3:
+                    if controller:
+                        controller.restore_all()
+
+                    print("\nAmbulance reached destination / left simulation.")
+                    break
+                continue
+
+            controller.update()
+
+            road_id = traci.vehicle.getRoadID(AMBULANCE_ID)
+            route_index = traci.vehicle.getRouteIndex(AMBULANCE_ID)
+            speed = traci.vehicle.getSpeed(AMBULANCE_ID) * 3.6
+
+            if (
+                road_id
+                and not road_id.startswith(":")
+                and road_id != last_edge
+            ):
+                print(
+                    f"[t={traci.simulation.getTime():6.1f}s] "
+                    f"edge={road_id:12s} "
+                    f"speed={speed:5.1f} km/h "
+                    f"route_index={route_index}/{len(full_route)-1}"
+                )
+                last_edge = road_id
+
+            if (
+                not pickup_announced
+                and route_index >= len(leg1["edge_path"])
+            ):
+                print("\n>>> PICKUP J23 REACHED")
+                print(">>> Continuing to Main Hospital J47.\n")
+                pickup_announced = True
+
+            time.sleep(0.01)
+
+        print("\n" + "=" * 92)
+        print("GREEN CORRIDOR TEST COMPLETE")
+        print("=" * 92)
+        print("Check the console above for:")
+        print("  [GREEN CORRIDOR ON]")
+        print("  [GREEN CORRIDOR OFF]")
+        print("If these appear and the ambulance reaches J47, signal preemption is working.")
+
+    finally:
+        if controller is not None:
+            try:
+                controller.restore_all()
+            except Exception:
+                pass
+
+        try:
+            traci.close()
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    main()
