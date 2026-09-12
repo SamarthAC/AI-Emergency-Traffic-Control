@@ -578,7 +578,7 @@ def run_sumo(
                     and junction_camera_manager.has_camera(junction_id)
                     and junction_id not in processed_junction_camera_approaches
                 ):
-                    run_junction_camera_inference(
+                    detection = run_junction_camera_inference(
                         detector=detector,
                         junction_camera_manager=junction_camera_manager,
                         camera_image_map=junction_camera_image_map,
@@ -586,6 +586,20 @@ def run_sumo(
                         simulation_time=sim_time,
                     )
                     processed_junction_camera_approaches.add(junction_id)
+
+                    if (
+                        detection is not None
+                        and detection.detected
+                        and detection.confidence
+                            >= junction_camera_manager.minimum_confidence
+                        and not controller.corridor_armed
+                    ):
+                        controller.arm_corridor_from_camera(
+                            junction_id=detection.junction_id,
+                            camera_id=detection.camera_id,
+                            confidence=detection.confidence,
+                            simulation_time=sim_time,
+                        )
 
             controller.update()
 

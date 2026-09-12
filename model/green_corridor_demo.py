@@ -85,6 +85,10 @@ PREEMPT_DISTANCE_M = 220.0
 # Keep selected green alive long enough for the ambulance to pass.
 GREEN_HOLD_SECONDS = 30.0
 
+# Rolling route-wide Green Corridor settings.
+CORRIDOR_LOOKAHEAD_SIGNALS = 2
+CORRIDOR_LOOKAHEAD_DISTANCE_M = 900.0
+
 # Red ambulance in SUMO.
 AMBULANCE_COLOR = (255, 0, 0, 255)
 
@@ -231,7 +235,16 @@ def choose_green_phase(tls_id: str, required_indices: list[int]):
     return phase_index, state
 
 
+
 class GreenCorridorController:
+    """
+    Rolling route-wide Green Corridor controller.
+
+    One valid ambulance detection at any configured junction camera arms the
+    corridor. After that, upcoming traffic lights on the already-selected
+    ambulance route are preempted automatically in a rolling window.
+    """
+
     def __init__(
         self,
         ambulance_id: str,
@@ -241,18 +254,53 @@ class GreenCorridorController:
         camera_manager=None,
     ):
         self.ambulance_id = ambulance_id
-        self.route_edges = route_edges
+        self.route_edges = list(route_edges)
         self.edge_nodes = edge_nodes
         self.publisher = publisher
         self.camera_manager = camera_manager
 
         self.tls_ids = set(traci.trafficlight.getIDList())
-
-        # tls_id -> saved state
         self.active = {}
-
-        # Avoid repeatedly preempting the same junction after it is passed.
         self.completed_tls = set()
+
+        self.corridor_armed = False
+        self.corridor_trigger = None
+
+        self.route_edge_lengths = {}
+        for edge_id in self.route_edges:
+            try:
+                self.route_edge_lengths[edge_id] = float(
+                    traci.lane.getLength(f"{edge_id}_0")
+                )
+            except Exception:
+                self.route_edge_lengths[edge_id] = 0.0
+
+        self.route_signal_plan = []
+        for i in range(len(self.route_edges) - 1):
+            incoming = self.route_edges[i]
+            outgoing = self.route_edges[i + 1]
+
+            edge_data = self.edge_nodes.get(incoming)
+            if not edge_data:
+                continue
+
+            junction = edge_data[1]
+            if junction not in self.tls_ids:
+                continue
+
+            indices = movement_link_indices(junction, incoming, outgoing)
+            selected = choose_green_phase(junction, indices)
+
+            self.route_signal_plan.append(
+                {
+                    "junction_id": junction,
+                    "incoming_route_index": i,
+                    "incoming_edge": incoming,
+                    "outgoing_edge": outgoing,
+                    "controlled_links": indices,
+                    "selected_phase": selected,
+                }
+            )
 
         print("\nTraffic lights available in SUMO:", len(self.tls_ids))
         self.print_route_signals()
@@ -261,42 +309,80 @@ class GreenCorridorController:
         print("\nGREEN CORRIDOR SIGNAL PLAN")
         print("-" * 90)
 
-        count = 0
-        for i in range(len(self.route_edges) - 1):
-            incoming = self.route_edges[i]
-            outgoing = self.route_edges[i + 1]
+        for item in self.route_signal_plan:
+            selected = item["selected_phase"]
+            phase_text = (
+                "NO GREEN PHASE FOUND"
+                if selected is None
+                else f"phase {selected[0]}"
+            )
 
-            if incoming not in self.edge_nodes:
-                continue
-
-            junction = self.edge_nodes[incoming][1]
-
-            if junction in self.tls_ids:
-                indices = movement_link_indices(junction, incoming, outgoing)
-                phase = choose_green_phase(junction, indices)
-
-                if phase is None:
-                    phase_text = "NO GREEN PHASE FOUND"
-                else:
-                    phase_text = f"phase {phase[0]}"
-
-                print(
-                    f"{junction:5s}: "
-                    f"{incoming:12s} -> {outgoing:12s} "
-                    f"links={indices}  {phase_text}"
-                )
-                count += 1
+            print(
+                f"{item['junction_id']:5s}: "
+                f"{item['incoming_edge']:12s} -> {item['outgoing_edge']:12s} "
+                f"links={item['controlled_links']}  {phase_text}"
+            )
 
         print("-" * 90)
-        print(f"Traffic-light junctions on ambulance route: {count}\n")
+        print(
+            f"Traffic-light junctions on ambulance route: "
+            f"{len(self.route_signal_plan)}"
+        )
+        print(
+            f"Rolling corridor: next {CORRIDOR_LOOKAHEAD_SIGNALS} route signals, "
+            f"max {CORRIDOR_LOOKAHEAD_DISTANCE_M:.0f} m lookahead\n"
+        )
+
+    def arm_corridor_from_camera(
+        self,
+        junction_id: str,
+        camera_id: str,
+        confidence: float,
+        simulation_time: float | None = None,
+    ) -> bool:
+        if self.corridor_armed:
+            return False
+
+        self.corridor_armed = True
+        self.corridor_trigger = {
+            "junction_id": junction_id,
+            "camera_id": camera_id,
+            "confidence": float(confidence),
+            "simulation_time": (
+                float(simulation_time)
+                if simulation_time is not None
+                else float(traci.simulation.getTime())
+            ),
+        }
+
+        print(
+            "\n[GREEN CORRIDOR ARMED]"
+            f"\n  Trigger camera      : {camera_id}"
+            f"\n  Detection junction  : {junction_id}"
+            f"\n  Confidence          : {float(confidence):.4f}"
+            f"\n  Policy              : rolling route-wide preemption"
+            f"\n  Lookahead signals   : {CORRIDOR_LOOKAHEAD_SIGNALS}"
+            f"\n  Lookahead distance  : {CORRIDOR_LOOKAHEAD_DISTANCE_M:.0f} m\n"
+        )
+
+        if self.publisher is not None:
+            self.publisher.publish(
+                "GREEN_CORRIDOR_STATUS",
+                {
+                    "armed": True,
+                    "ambulance_id": self.ambulance_id,
+                    "trigger_camera_id": camera_id,
+                    "trigger_junction_id": junction_id,
+                    "confidence": round(float(confidence), 4),
+                    "lookahead_signals": CORRIDOR_LOOKAHEAD_SIGNALS,
+                    "lookahead_distance_m": CORRIDOR_LOOKAHEAD_DISTANCE_M,
+                    "simulation_time": traci.simulation.getTime(),
+                },
+            )
+
+        return True
 
     def get_upcoming_tls_approach(self):
-        """
-        Return the next camera/preemption-relevant TLS approach for the ambulance.
-
-        The result is None unless TraCI confirms that the ambulance is currently
-        on a route edge whose downstream junction is a traffic light.
-        """
         if self.ambulance_id not in traci.vehicle.getIDList():
             return None
 
@@ -322,9 +408,6 @@ class GreenCorridorController:
         if junction not in self.tls_ids:
             return None
 
-        if junction in self.completed_tls or junction in self.active:
-            return None
-
         distance = self._distance_to_end_of_current_edge()
         if distance is None:
             return None
@@ -339,7 +422,6 @@ class GreenCorridorController:
 
     def _distance_to_end_of_current_edge(self):
         road_id = traci.vehicle.getRoadID(self.ambulance_id)
-
         if not road_id or road_id.startswith(":"):
             return None
 
@@ -353,6 +435,94 @@ class GreenCorridorController:
 
         return max(0.0, lane_length - lane_position)
 
+    def _distance_to_route_index(self, current_index: int, target_index: int):
+        if target_index < current_index:
+            return 0.0
+
+        remaining = self._distance_to_end_of_current_edge()
+        distance = float(remaining) if remaining is not None else 0.0
+
+        if target_index == current_index:
+            return distance
+
+        for idx in range(current_index + 1, target_index + 1):
+            edge_id = self.route_edges[idx]
+            distance += self.route_edge_lengths.get(edge_id, 0.0)
+
+        return distance
+
+    def _activate_signal(self, plan_item: dict, distance_to_signal: float):
+        junction = plan_item["junction_id"]
+
+        if junction in self.active or junction in self.completed_tls:
+            return False
+
+        selected = plan_item["selected_phase"]
+        if selected is None:
+            print(
+                f"[WARN] {junction}: no legal green phase for "
+                f"{plan_item['incoming_edge']} -> {plan_item['outgoing_edge']}."
+            )
+            self.completed_tls.add(junction)
+            return False
+
+        green_phase, phase_state = selected
+
+        current_program = traci.trafficlight.getProgram(junction)
+        current_phase = traci.trafficlight.getPhase(junction)
+
+        try:
+            next_switch = traci.trafficlight.getNextSwitch(junction)
+            now = traci.simulation.getTime()
+            remaining = max(1.0, next_switch - now)
+        except Exception:
+            remaining = 5.0
+
+        self.active[junction] = {
+            "program": current_program,
+            "phase": current_phase,
+            "remaining_duration": remaining,
+            "incoming_route_index": plan_item["incoming_route_index"],
+            "incoming_edge": plan_item["incoming_edge"],
+            "outgoing_edge": plan_item["outgoing_edge"],
+        }
+
+        traci.trafficlight.setPhase(junction, green_phase)
+        traci.trafficlight.setPhaseDuration(junction, GREEN_HOLD_SECONDS)
+
+        print(
+            f"\n[GREEN CORRIDOR ON]  TLS={junction}"
+            f"\n  Ambulance movement : "
+            f"{plan_item['incoming_edge']} -> {plan_item['outgoing_edge']}"
+            f"\n  Route lookahead    : {distance_to_signal:.1f} m"
+            f"\n  Controlled links   : {plan_item['controlled_links']}"
+            f"\n  Selected phase     : {green_phase}"
+            f"\n  Phase state        : {phase_state}"
+            f"\n  Hold               : {GREEN_HOLD_SECONDS:.0f} s\n"
+        )
+
+        if self.publisher is not None:
+            self.publisher.publish(
+                "SIGNAL_UPDATE",
+                {
+                    "junction_id": junction,
+                    "state": "GREEN_CORRIDOR_ACTIVE",
+                    "green_corridor_active": True,
+                    "corridor_armed": self.corridor_armed,
+                    "ambulance_id": self.ambulance_id,
+                    "incoming_edge": plan_item["incoming_edge"],
+                    "outgoing_edge": plan_item["outgoing_edge"],
+                    "distance_to_signal_m": round(distance_to_signal, 2),
+                    "controlled_links": plan_item["controlled_links"],
+                    "selected_phase": green_phase,
+                    "phase_state": phase_state,
+                    "hold_seconds": GREEN_HOLD_SECONDS,
+                    "simulation_time": traci.simulation.getTime(),
+                },
+            )
+
+        return True
+
     def _restore(self, tls_id: str):
         saved = self.active.pop(tls_id, None)
         if not saved:
@@ -363,7 +533,7 @@ class GreenCorridorController:
             traci.trafficlight.setPhase(tls_id, saved["phase"])
             traci.trafficlight.setPhaseDuration(
                 tls_id,
-                max(1.0, saved["remaining_duration"])
+                max(1.0, saved["remaining_duration"]),
             )
 
             print(
@@ -378,6 +548,7 @@ class GreenCorridorController:
                         "junction_id": tls_id,
                         "state": "NORMAL",
                         "green_corridor_active": False,
+                        "corridor_armed": self.corridor_armed,
                         "ambulance_id": self.ambulance_id,
                         "restored_program": saved["program"],
                         "restored_phase": saved["phase"],
@@ -401,149 +572,87 @@ class GreenCorridorController:
             return
 
         route_index = traci.vehicle.getRouteIndex(self.ambulance_id)
-
         if route_index < 0 or route_index >= len(self.route_edges):
             return
 
-        current_road = traci.vehicle.getRoadID(self.ambulance_id)
-
-        # -------------------------------------------------------------
-        # Release any TLS after ambulance has advanced past its incoming edge.
-        # -------------------------------------------------------------
         for tls_id, saved in list(self.active.items()):
             if route_index > saved["incoming_route_index"]:
                 self._restore(tls_id)
 
-        # Internal intersection edge: do not initiate a new preemption.
-        if not current_road or current_road.startswith(":"):
+        if not self.corridor_armed:
             return
 
-        # Need a following route edge to define the movement.
-        if route_index >= len(self.route_edges) - 1:
-            return
-
-        incoming_edge = self.route_edges[route_index]
-        outgoing_edge = self.route_edges[route_index + 1]
-
-        # During lane transitions SUMO may briefly report something unexpected.
-        if current_road != incoming_edge:
-            return
-
-        edge_data = self.edge_nodes.get(incoming_edge)
-        if not edge_data:
-            return
-
-        junction = edge_data[1]
-
-        if junction not in self.tls_ids:
-            return
-
-        if junction in self.completed_tls or junction in self.active:
-            return
-
-        distance = self._distance_to_end_of_current_edge()
-        if distance is None or distance > PREEMPT_DISTANCE_M:
-            return
-
-        # -------------------------------------------------------------
-        # Camera-assisted authorization.
-        #
-        # TraCI has already confirmed:
-        #   1. this junction is the next TLS on the active route,
-        #   2. the ambulance is physically on the incoming route edge,
-        #   3. it is within the configured preemption distance.
-        #
-        # If a JunctionCameraManager is attached, fresh CNN evidence from
-        # that junction camera is additionally required before preemption.
-        # -------------------------------------------------------------
-        if self.camera_manager is not None:
-            now = traci.simulation.getTime()
-            authorized, reason, detection = self.camera_manager.authorize_preemption(
-                junction,
-                simulation_time=now,
+        # IMPORTANT:
+        # setPhaseDuration() only controls the current SUMO phase timer.
+        # If a route signal was activated far ahead, that timer could expire
+        # before the ambulance arrived, causing the light to resume its normal
+        # cycle and potentially turn red. Refresh the selected ambulance phase
+        # on every simulation step until the ambulance has passed it.
+        for tls_id, saved in list(self.active.items()):
+            plan_item = next(
+                (
+                    item
+                    for item in self.route_signal_plan
+                    if item["junction_id"] == tls_id
+                ),
+                None,
             )
+            if plan_item is None:
+                continue
 
-            if not authorized:
-                return
+            selected = plan_item["selected_phase"]
+            if selected is None:
+                continue
 
-            print(
-                f"[JUNCTION CAMERA CONFIRMED] {junction} "
-                f"camera={detection.camera_id if detection else 'N/A'} "
-                f"confidence={detection.confidence if detection else 0.0:.2f}"
-            )
+            green_phase, _ = selected
 
-        indices = movement_link_indices(
-            junction,
-            incoming_edge,
-            outgoing_edge
-        )
+            try:
+                if traci.trafficlight.getPhase(tls_id) != green_phase:
+                    traci.trafficlight.setPhase(tls_id, green_phase)
 
-        selected = choose_green_phase(junction, indices)
+                traci.trafficlight.setPhaseDuration(
+                    tls_id,
+                    GREEN_HOLD_SECONDS,
+                )
+            except Exception as exc:
+                print(
+                    f"[WARN] Could not maintain Green Corridor at "
+                    f"{tls_id}: {exc}"
+                )
 
-        if selected is None:
-            print(
-                f"[WARN] {junction}: could not find an existing green phase "
-                f"for {incoming_edge} -> {outgoing_edge}; leaving normal control."
-            )
-            self.completed_tls.add(junction)
-            return
+        upcoming = []
 
-        green_phase, phase_state = selected
+        for item in self.route_signal_plan:
+            idx = item["incoming_route_index"]
 
-        current_program = traci.trafficlight.getProgram(junction)
-        current_phase = traci.trafficlight.getPhase(junction)
+            if idx < route_index:
+                continue
 
-        try:
-            next_switch = traci.trafficlight.getNextSwitch(junction)
-            now = traci.simulation.getTime()
-            remaining = max(1.0, next_switch - now)
-        except Exception:
-            remaining = 5.0
+            junction = item["junction_id"]
+            if junction in self.completed_tls:
+                continue
 
-        self.active[junction] = {
-            "program": current_program,
-            "phase": current_phase,
-            "remaining_duration": remaining,
-            "incoming_route_index": route_index,
-            "incoming_edge": incoming_edge,
-            "outgoing_edge": outgoing_edge,
-        }
+            distance = self._distance_to_route_index(route_index, idx)
 
-        # We deliberately use an EXISTING legal SUMO phase.
-        traci.trafficlight.setPhase(junction, green_phase)
-        traci.trafficlight.setPhaseDuration(
-            junction,
-            GREEN_HOLD_SECONDS
-        )
+            if idx != route_index and distance > CORRIDOR_LOOKAHEAD_DISTANCE_M:
+                continue
 
-        print(
-            f"\n[GREEN CORRIDOR ON]  TLS={junction}"
-            f"\n  Ambulance movement : {incoming_edge} -> {outgoing_edge}"
-            f"\n  Distance to signal : {distance:.1f} m"
-            f"\n  Controlled links   : {indices}"
-            f"\n  Selected phase     : {green_phase}"
-            f"\n  Phase state        : {phase_state}"
-            f"\n  Hold               : {GREEN_HOLD_SECONDS:.0f} s\n"
-        )
+            upcoming.append((idx, distance, item))
 
-        if self.publisher is not None:
-            self.publisher.publish(
-                "SIGNAL_UPDATE",
-                {
-                    "junction_id": junction,
-                    "state": "GREEN_CORRIDOR_ACTIVE",
-                    "green_corridor_active": True,
-                    "ambulance_id": self.ambulance_id,
-                    "incoming_edge": incoming_edge,
-                    "outgoing_edge": outgoing_edge,
-                    "distance_to_signal_m": round(distance, 2),
-                    "controlled_links": indices,
-                    "selected_phase": green_phase,
-                    "phase_state": phase_state,
-                    "hold_seconds": GREEN_HOLD_SECONDS,
-                    "simulation_time": traci.simulation.getTime(),
-                },
-            )
+        upcoming.sort(key=lambda item: (item[0], item[1]))
+        allowed = upcoming[:CORRIDOR_LOOKAHEAD_SIGNALS]
+        allowed_ids = {item["junction_id"] for _, _, item in allowed}
+
+        for tls_id in list(self.active.keys()):
+            saved = self.active[tls_id]
+            if (
+                saved["incoming_route_index"] >= route_index
+                and tls_id not in allowed_ids
+            ):
+                self._restore(tls_id)
+
+        for _, distance, item in allowed:
+            self._activate_signal(item, distance)
 
 
 def main():
