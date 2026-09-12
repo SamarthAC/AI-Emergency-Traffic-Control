@@ -24,6 +24,7 @@ class DashboardStateStore:
         self.route: dict[str, Any] = {}
         self.traffic: dict[str, dict[str, Any]] = {}
         self.signals: dict[str, dict[str, Any]] = {}
+        self.junction_cameras: dict[str, dict[str, Any]] = {}
         self.vehicles: dict[str, dict[str, Any]] = {}
         self.logs: list[dict[str, Any]] = []
         self.last_event_type: str | None = None
@@ -60,6 +61,15 @@ class DashboardStateStore:
             if junction_id:
                 self.signals[str(junction_id)] = data
 
+        elif event_type == "JUNCTION_CAMERA_DETECTION":
+            junction_id = data.get("junction_id")
+            camera_id = data.get("camera_id")
+
+            if junction_id:
+                self.junction_cameras[str(junction_id)] = data
+            elif camera_id:
+                self.junction_cameras[str(camera_id)] = data
+
         elif event_type == "VEHICLE_UPDATE":
             vehicle_id = data.get("vehicle_id")
             if vehicle_id:
@@ -92,6 +102,7 @@ class DashboardStateStore:
             "route": deepcopy(self.route),
             "traffic": deepcopy(self.traffic),
             "signals": deepcopy(self.signals),
+            "junction_cameras": deepcopy(self.junction_cameras),
             "vehicles": deepcopy(self.vehicles),
             "logs": deepcopy(self.logs),
             "meta": {

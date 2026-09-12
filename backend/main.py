@@ -146,3 +146,7 @@ async def broadcast_worker():
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(broadcast_worker())
+
+@app.get("/api/junction-cameras")
+async def get_junction_cameras():
+    return state_store.junction_cameras
