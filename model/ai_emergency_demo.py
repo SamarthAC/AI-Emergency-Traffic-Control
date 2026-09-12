@@ -38,6 +38,7 @@ from inference_v4 import TrafficInferenceV4
 from edge_traffic_manager import EdgeTrafficManager
 from traffic_routing import SumoRoadGraph
 from backend_bridge import BackendEventPublisher
+from hospital_selector import HospitalSelector
 
 import green_corridor_demo as gc
 
@@ -149,23 +150,115 @@ def analyse_cameras(
         )
 
 
-def build_ai_route(
+def select_hospital_and_build_route(
     graph: SumoRoadGraph,
     station: str,
     pickup: str,
-    hospital: str,
+    hospital_data_file: Path,
+    publisher: BackendEventPublisher,
 ):
+    """
+    1. Compute station -> pickup.
+    2. Evaluate every medically eligible hospital from hospital_data.json.
+    3. A* computes pickup -> hospital for each eligible candidate.
+    4. Choose the eligible hospital with the lowest traffic-aware route cost.
+    """
     leg1 = graph.astar(station, pickup)
-    leg2 = graph.astar(pickup, hospital)
 
-    if not leg1 or not leg2:
+    if not leg1:
         raise RuntimeError(
-            "A* could not calculate one of the ambulance route legs."
+            "A* could not calculate the ambulance station-to-pickup route."
         )
 
-    full_route = list(leg1["edge_path"]) + list(leg2["edge_path"])
-    return leg1, leg2, full_route
+    selector = HospitalSelector.from_json(hospital_data_file)
+    selection = selector.select(graph, pickup)
 
+    selected = selection["selected_hospital"]
+    leg2 = selected["route"]
+    hospital = selected["junction_id"]
+    hospital_name = selected["name"]
+
+    full_route = list(leg1["edge_path"]) + list(leg2["edge_path"])
+
+    print("\n" + "=" * 96)
+    print("STEP 2B - DYNAMIC HOSPITAL EVALUATION")
+    print("=" * 96)
+
+    for candidate in selection["candidates"]:
+        if candidate["eligible"]:
+            print(
+                f"{candidate['name']:24s} "
+                f"junction={candidate['junction_id']:4s} "
+                f"beds={candidate['beds_available']:2d} "
+                f"doctors={candidate['doctors_available']:2d} "
+                f"route_cost={candidate['dynamic_cost_s']:.2f} s "
+                f"distance={candidate['distance_m']:.2f} m"
+            )
+        else:
+            reason = ", ".join(candidate["reasons"]) or "Not eligible"
+            print(
+                f"{candidate['name']:24s} "
+                f"junction={candidate['junction_id']:4s} "
+                f"NOT ELIGIBLE - {reason}"
+            )
+
+    print("-" * 96)
+    print(f"SELECTED HOSPITAL : {hospital_name} ({hospital})")
+    print(f"REASON            : {selection['selection_reason']}")
+    print("=" * 96)
+
+    publisher.publish(
+        "HOSPITAL_SELECTION",
+        {
+            "pickup": pickup,
+            "selected_hospital": {
+                "hospital_id": selected["hospital_id"],
+                "name": hospital_name,
+                "junction_id": hospital,
+                "beds_available": selected["beds_available"],
+                "doctors_available": selected["doctors_available"],
+                "dynamic_cost_s": round(selected["dynamic_cost_s"], 2),
+                "distance_m": round(selected["distance_m"], 2),
+            },
+            "candidates": [
+                {
+                    "hospital_id": c["hospital_id"],
+                    "name": c["name"],
+                    "junction_id": c["junction_id"],
+                    "beds_available": c["beds_available"],
+                    "doctors_available": c["doctors_available"],
+                    "eligible": c["eligible"],
+                    "reasons": c["reasons"],
+                    "dynamic_cost_s": (
+                        round(c["dynamic_cost_s"], 2)
+                        if c["dynamic_cost_s"] is not None
+                        else None
+                    ),
+                    "distance_m": (
+                        round(c["distance_m"], 2)
+                        if c["distance_m"] is not None
+                        else None
+                    ),
+                }
+                for c in selection["candidates"]
+            ],
+            "selection_reason": selection["selection_reason"],
+            "timestamp": utc_now(),
+        },
+    )
+
+    emit_log(
+        publisher,
+        f"Hospital selected: {hospital_name} ({hospital}).",
+        hospital_id=selected["hospital_id"],
+        hospital_name=hospital_name,
+        hospital_junction=hospital,
+        beds_available=selected["beds_available"],
+        doctors_available=selected["doctors_available"],
+        dynamic_cost_s=round(selected["dynamic_cost_s"], 2),
+    )
+
+    return leg1, leg2, full_route, hospital, hospital_name, selection
 
 def publish_route(
     publisher: BackendEventPublisher,
@@ -175,6 +268,7 @@ def publish_route(
     station: str,
     pickup: str,
     hospital: str,
+    hospital_name: str,
 ):
     publisher.publish(
         "AI_ROUTE",
@@ -183,6 +277,7 @@ def publish_route(
             "station": station,
             "pickup": pickup,
             "destination": hospital,
+            "destination_name": hospital_name,
             "route": full_route,
             "station_to_pickup": {
                 "junction_path": leg1["junction_path"],
@@ -219,6 +314,7 @@ def run_sumo(
     delay_ms: int,
     pickup: str,
     hospital: str,
+    hospital_name: str,
     publisher: BackendEventPublisher,
 ):
     gc.PREEMPT_DISTANCE_M = max(20.0, threshold)
@@ -299,6 +395,7 @@ def run_sumo(
                 "status": "DISPATCHED",
                 "pickup": pickup,
                 "destination": hospital,
+                "destination_name": hospital_name,
                 "route": full_route,
                 "timestamp": utc_now(),
             },
@@ -340,6 +437,7 @@ def run_sumo(
                             "status": "ARRIVED",
                             "pickup": pickup,
                             "destination": hospital,
+                            "destination_name": hospital_name,
                             "simulation_time": sim_time,
                             "timestamp": utc_now(),
                         },
@@ -347,7 +445,7 @@ def run_sumo(
 
                     emit_log(
                         publisher,
-                        f"{AMBULANCE_ID} reached hospital {hospital}.",
+                        f"{AMBULANCE_ID} reached {hospital_name} ({hospital}).",
                         simulation_time=sim_time,
                     )
 
@@ -426,6 +524,7 @@ def run_sumo(
                         "pickup": pickup,
                         "pickup_reached": True,
                         "destination": hospital,
+                        "destination_name": hospital_name,
                         "simulation_time": sim_time,
                         "timestamp": utc_now(),
                     },
@@ -449,6 +548,7 @@ def run_sumo(
                     "status": "SIMULATION_ENDED",
                     "pickup": pickup,
                     "destination": hospital,
+                    "destination_name": hospital_name,
                     "timestamp": utc_now(),
                 },
             )
@@ -460,6 +560,7 @@ def run_sumo(
         print("  V4 CNN")
         print("  -> traffic density")
         print("  -> SUMO edge traffic scores")
+        print("  -> dynamic hospital selection")
         print("  -> A* dynamic route")
         print("  -> TraCI ambulance movement")
         print("  -> Green Corridor preemption/restoration")
@@ -497,7 +598,11 @@ def main():
     )
     parser.add_argument("--station", default="J01")
     parser.add_argument("--pickup", default="J23")
-    parser.add_argument("--hospital", default="J47")
+    parser.add_argument(
+        "--hospital-data",
+        default="hospital_data.json",
+        help="JSON file containing hospital availability/capacity data.",
+    )
     parser.add_argument(
         "--threshold",
         type=float,
@@ -533,6 +638,15 @@ def main():
     model_dir = Path(__file__).resolve().parent
     project_dir = model_dir.parent
 
+    hospital_data_file = Path(args.hospital_data)
+    if not hospital_data_file.is_absolute():
+        hospital_data_file = model_dir / hospital_data_file
+
+    if not hospital_data_file.exists():
+        raise FileNotFoundError(
+            f"Hospital data file not found:\n{hospital_data_file}"
+        )
+
     net_file = (
         project_dir
         / "simulation"
@@ -563,7 +677,7 @@ def main():
     print("=" * 96)
     print("Station     :", args.station)
     print("Pickup      :", args.pickup)
-    print("Hospital    :", args.hospital)
+    print("Hospital    : AUTO-SELECT (J47/J45 from hospital_data.json)")
     print("Backend     :", "OFF" if args.no_backend else args.backend_url)
     print("=" * 96)
 
@@ -600,11 +714,14 @@ def main():
     print("\nTraffic state saved to:")
     print(traffic_json)
 
-    leg1, leg2, full_route = build_ai_route(
-        graph,
-        args.station,
-        args.pickup,
-        args.hospital,
+    leg1, leg2, full_route, selected_hospital, selected_hospital_name, hospital_selection = (
+        select_hospital_and_build_route(
+            graph,
+            args.station,
+            args.pickup,
+            hospital_data_file,
+            publisher,
+        )
     )
 
     print_route(
@@ -612,7 +729,7 @@ def main():
         leg1,
     )
     print_route(
-        "STEP 2B - AI ROUTE: PICKUP -> HOSPITAL",
+        f"STEP 2C - AI ROUTE: PICKUP -> {selected_hospital_name.upper()} ({selected_hospital})",
         leg2,
     )
 
@@ -626,7 +743,8 @@ def main():
         full_route,
         args.station,
         args.pickup,
-        args.hospital,
+        selected_hospital,
+        selected_hospital_name,
     )
 
     emit_log(
@@ -645,7 +763,8 @@ def main():
         hold=args.hold,
         delay_ms=args.delay,
         pickup=args.pickup,
-        hospital=args.hospital,
+        hospital=selected_hospital,
+        hospital_name=selected_hospital_name,
         publisher=publisher,
     )
 

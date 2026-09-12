@@ -1,5 +1,5 @@
-***Starting server on port 51757 ***
-Loading net-file from 'C:\Users\chapp\Desktop\Major Project\AI Traffic Control\simulation\bengaluru_structured\bengaluru_structured.net.xml' ... done (33ms).
+***Starting server on port 58785 ***
+Loading net-file from 'C:\Users\chapp\Desktop\Major Project\AI Traffic Control\simulation\bengaluru_structured\bengaluru_structured.net.xml' ... done (29ms).
 Loading additional-files from 'C:\Users\chapp\Desktop\Major Project\AI Traffic Control\simulation\bengaluru_structured\bengaluru_structured.add.xml' ... done (0ms).
 Loading route-files incrementally from 'C:\Users\chapp\Desktop\Major Project\AI Traffic Control\simulation\bengaluru_structured\bengaluru_structured.rou.xml'
 Loading done.
@@ -9,3 +9,16 @@ Warning: Route file should be sorted by departure time, ignoring 'truck_orr'!
 Warning: Route file should be sorted by departure time, ignoring 'car_orr'!
 Warning: Route file should be sorted by departure time, ignoring 'car_orr_return'!
 Warning: Route file should be sorted by departure time, ignoring 'hospital_traffic'!
+Simulation ended at time: 466.00.
+Reason: TraCI requested termination.
+Performance:
+ Duration: 44.72s
+ TraCI-Duration: 5.62s
+ Real time factor: 10.4206
+ UPS: 4132.046781
+Vehicles:
+ Inserted: 785 (Loaded: 1113)
+ Running: 757
+ Waiting: 328
+DijkstraRouter answered 1930 queries and explored 159.44 edges on average.
+DijkstraRouter spent 0.14s answering queries (0.07ms on average).
