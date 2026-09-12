@@ -8,12 +8,16 @@ Final deployed checkpoint:
 
 Post-processing:
 - Normal traffic classes (0-13):
-      confidence >= 0.80
+      confidence >= 0.65
       class-aware NMS IoU = 0.40
 - Ambulance class (14):
-      confidence >= 0.96
+      confidence >= 0.70
       NMS IoU = 0.20
       directional containment = 0.80
+- Junction-camera deployment:
+      retain one primary ambulance candidate per frame
+      from near-top-confidence candidates, preferring the larger box.
+      Raw candidate count is still returned for diagnostics.
 
 The CNN returns normalized boxes in the model's 448x448 letterboxed space.
 This wrapper maps them back to original-image pixel coordinates.
@@ -49,6 +53,13 @@ AMBULANCE_CLASS_ID = 14
 AMBULANCE_CONFIDENCE = 0.70
 AMBULANCE_NMS_IOU = 0.20
 AMBULANCE_CONTAINMENT = 0.80
+
+# Junction-camera deployment policy.
+# The green-corridor trigger needs presence/identity, not ambulance counting.
+# Keep candidates close to the best confidence, then prefer the larger
+# spatially supported box. This removes fragmented false ambulance boxes
+# without raising the global ambulance confidence threshold.
+PRIMARY_AMBULANCE_CONFIDENCE_WINDOW = 0.05
 
 # Decode low enough to preserve both traffic and ambulance candidates.
 RAW_DECODE_CONFIDENCE = min(
@@ -549,6 +560,54 @@ def ambulance_postprocess(detections):
     return kept
 
 
+def select_primary_ambulance(detections):
+    """
+    Select one ambulance candidate for junction-camera deployment.
+
+    The V4 model can emit several spatially separate ambulance-class
+    candidates for a single real ambulance. NMS cannot remove those when
+    they do not overlap. For the green-corridor use case we only need a
+    reliable ambulance-present decision, not an ambulance census.
+
+    Policy:
+      1. Start from ambulance candidates that already passed confidence,
+         NMS and containment filtering.
+      2. Keep candidates within PRIMARY_AMBULANCE_CONFIDENCE_WINDOW of
+         the highest confidence candidate.
+      3. Among those near-top candidates, prefer the largest normalized
+         box area; use confidence as a tie-breaker.
+
+    This preserves a high-confidence candidate while avoiding tiny
+    fragmented regions that can narrowly outrank the true ambulance.
+    """
+    if not detections:
+        return None
+
+    highest_confidence = max(
+        detection["confidence"]
+        for detection in detections
+    )
+
+    minimum_primary_confidence = max(
+        AMBULANCE_CONFIDENCE,
+        highest_confidence - PRIMARY_AMBULANCE_CONFIDENCE_WINDOW,
+    )
+
+    shortlist = [
+        detection
+        for detection in detections
+        if detection["confidence"] >= minimum_primary_confidence
+    ]
+
+    return max(
+        shortlist,
+        key=lambda detection: (
+            box_area(detection["box"]),
+            detection["confidence"],
+        ),
+    )
+
+
 def postprocess(raw_detections):
     traffic = [
         detection
@@ -769,8 +828,35 @@ class TrafficInferenceV4:
             outputs
         )
 
-        detections = postprocess(
+        processed_detections = postprocess(
             raw_detections
+        )
+
+        ambulance_candidates = [
+            detection
+            for detection in processed_detections
+            if detection["class_id"] == AMBULANCE_CLASS_ID
+        ]
+
+        primary_ambulance = select_primary_ambulance(
+            ambulance_candidates
+        )
+
+        # Deployment output contains at most one ambulance per frame.
+        # All pre-selection candidates are still counted below for
+        # diagnostics, so we do not hide model behaviour.
+        detections = [
+            detection
+            for detection in processed_detections
+            if detection["class_id"] != AMBULANCE_CLASS_ID
+        ]
+
+        if primary_ambulance is not None:
+            detections.append(primary_ambulance)
+
+        detections.sort(
+            key=lambda detection: detection["confidence"],
+            reverse=True,
         )
 
         result_detections = []
@@ -867,6 +953,16 @@ class TrafficInferenceV4:
             "ambulance_count":
                 len(
                     ambulance_detections
+                ),
+            "ambulance_candidate_count":
+                len(
+                    ambulance_candidates
+                ),
+            "ambulance_suppressed_candidates":
+                max(
+                    0,
+                    len(ambulance_candidates)
+                    - len(ambulance_detections),
                 ),
             "highest_ambulance_confidence":
                 (
@@ -1014,7 +1110,21 @@ def print_summary(result):
         )
 
         print(
-            "Highest ambulance confidence:",
+            "Raw ambulance candidates:",
+            result[
+                "ambulance_candidate_count"
+            ]
+        )
+
+        print(
+            "Suppressed ambulance candidates:",
+            result[
+                "ambulance_suppressed_candidates"
+            ]
+        )
+
+        print(
+            "Selected ambulance confidence:",
             result[
                 "highest_ambulance_confidence"
             ]

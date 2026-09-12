@@ -39,6 +39,7 @@ from edge_traffic_manager import EdgeTrafficManager
 from traffic_routing import SumoRoadGraph
 from backend_bridge import BackendEventPublisher
 from hospital_selector import HospitalSelector
+from junction_camera_manager import JunctionCameraManager
 
 import green_corridor_demo as gc
 
@@ -316,6 +317,7 @@ def run_sumo(
     hospital: str,
     hospital_name: str,
     publisher: BackendEventPublisher,
+    junction_camera_manager: JunctionCameraManager,
 ):
     gc.PREEMPT_DISTANCE_M = max(20.0, threshold)
     gc.GREEN_HOLD_SECONDS = max(5.0, hold)
@@ -386,6 +388,7 @@ def run_sumo(
             full_route,
             edge_nodes,
             publisher=publisher,
+            camera_manager=junction_camera_manager,
         )
 
         publisher.publish(
@@ -632,11 +635,25 @@ def main():
         action="store_true",
         help="Run simulation without sending backend events.",
     )
+    parser.add_argument(
+        "--junction-camera-config",
+        default="junction_camera_config.json",
+        help="JSON configuration for junction ambulance-detection cameras.",
+    )
 
     args = parser.parse_args()
 
     model_dir = Path(__file__).resolve().parent
     project_dir = model_dir.parent
+
+    junction_camera_config = Path(args.junction_camera_config)
+    if not junction_camera_config.is_absolute():
+        junction_camera_config = model_dir / junction_camera_config
+
+    junction_camera_manager = JunctionCameraManager(
+        junction_camera_config,
+        publisher=None,  # publisher attached after backend publisher is created
+    )
 
     hospital_data_file = Path(args.hospital_data)
     if not hospital_data_file.is_absolute():
@@ -672,6 +689,8 @@ def main():
         enabled=not args.no_backend,
     )
 
+    junction_camera_manager.publisher = publisher
+
     print("\n" + "=" * 96)
     print("AI SMART AMBULANCE - LIVE BACKEND DEMO")
     print("=" * 96)
@@ -679,6 +698,7 @@ def main():
     print("Pickup      :", args.pickup)
     print("Hospital    : AUTO-SELECT (J47/J45 from hospital_data.json)")
     print("Backend     :", "OFF" if args.no_backend else args.backend_url)
+    print("Junction cams:", junction_camera_manager.camera_count)
     print("=" * 96)
 
     emit_log(
@@ -766,6 +786,7 @@ def main():
         hospital=selected_hospital,
         hospital_name=selected_hospital_name,
         publisher=publisher,
+        junction_camera_manager=junction_camera_manager,
     )
 
 

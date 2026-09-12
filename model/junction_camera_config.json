@@ -1,0 +1,80 @@
+{
+  "junction_cameras": [
+    {
+      "camera_id": "JCAM_J07",
+      "junction_id": "J07",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J10",
+      "junction_id": "J10",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J12",
+      "junction_id": "J12",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J14",
+      "junction_id": "J14",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J16",
+      "junction_id": "J16",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J20",
+      "junction_id": "J20",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J22",
+      "junction_id": "J22",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J24",
+      "junction_id": "J24",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J28",
+      "junction_id": "J28",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J30",
+      "junction_id": "J30",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J32",
+      "junction_id": "J32",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J37",
+      "junction_id": "J37",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J39",
+      "junction_id": "J39",
+      "purpose": "ambulance_detection"
+    },
+    {
+      "camera_id": "JCAM_J46",
+      "junction_id": "J46",
+      "purpose": "ambulance_detection"
+    }
+  ],
+  "trigger_policy": {
+    "required_detection": true,
+    "minimum_confidence": 0.7,
+    "traci_confirmation": true,
+    "preempt_only_if_junction_on_active_route": true
+  }
+}

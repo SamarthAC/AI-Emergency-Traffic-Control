@@ -238,11 +238,13 @@ class GreenCorridorController:
         route_edges: list[str],
         edge_nodes: dict,
         publisher=None,
+        camera_manager=None,
     ):
         self.ambulance_id = ambulance_id
         self.route_edges = route_edges
         self.edge_nodes = edge_nodes
         self.publisher = publisher
+        self.camera_manager = camera_manager
 
         self.tls_ids = set(traci.trafficlight.getIDList())
 
@@ -395,6 +397,33 @@ class GreenCorridorController:
         distance = self._distance_to_end_of_current_edge()
         if distance is None or distance > PREEMPT_DISTANCE_M:
             return
+
+        # -------------------------------------------------------------
+        # Camera-assisted authorization.
+        #
+        # TraCI has already confirmed:
+        #   1. this junction is the next TLS on the active route,
+        #   2. the ambulance is physically on the incoming route edge,
+        #   3. it is within the configured preemption distance.
+        #
+        # If a JunctionCameraManager is attached, fresh CNN evidence from
+        # that junction camera is additionally required before preemption.
+        # -------------------------------------------------------------
+        if self.camera_manager is not None:
+            now = traci.simulation.getTime()
+            authorized, reason, detection = self.camera_manager.authorize_preemption(
+                junction,
+                simulation_time=now,
+            )
+
+            if not authorized:
+                return
+
+            print(
+                f"[JUNCTION CAMERA CONFIRMED] {junction} "
+                f"camera={detection.camera_id if detection else 'N/A'} "
+                f"confidence={detection.confidence if detection else 0.0:.2f}"
+            )
 
         indices = movement_link_indices(
             junction,
