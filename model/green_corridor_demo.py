@@ -290,6 +290,53 @@ class GreenCorridorController:
         print("-" * 90)
         print(f"Traffic-light junctions on ambulance route: {count}\n")
 
+    def get_upcoming_tls_approach(self):
+        """
+        Return the next camera/preemption-relevant TLS approach for the ambulance.
+
+        The result is None unless TraCI confirms that the ambulance is currently
+        on a route edge whose downstream junction is a traffic light.
+        """
+        if self.ambulance_id not in traci.vehicle.getIDList():
+            return None
+
+        route_index = traci.vehicle.getRouteIndex(self.ambulance_id)
+        if route_index < 0 or route_index >= len(self.route_edges) - 1:
+            return None
+
+        current_road = traci.vehicle.getRoadID(self.ambulance_id)
+        if not current_road or current_road.startswith(":"):
+            return None
+
+        incoming_edge = self.route_edges[route_index]
+        outgoing_edge = self.route_edges[route_index + 1]
+
+        if current_road != incoming_edge:
+            return None
+
+        edge_data = self.edge_nodes.get(incoming_edge)
+        if not edge_data:
+            return None
+
+        junction = edge_data[1]
+        if junction not in self.tls_ids:
+            return None
+
+        if junction in self.completed_tls or junction in self.active:
+            return None
+
+        distance = self._distance_to_end_of_current_edge()
+        if distance is None:
+            return None
+
+        return {
+            "junction_id": junction,
+            "incoming_edge": incoming_edge,
+            "outgoing_edge": outgoing_edge,
+            "route_index": route_index,
+            "distance_to_signal_m": float(distance),
+        }
+
     def _distance_to_end_of_current_edge(self):
         road_id = traci.vehicle.getRoadID(self.ambulance_id)
 

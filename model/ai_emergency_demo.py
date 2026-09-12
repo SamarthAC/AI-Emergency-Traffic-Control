@@ -304,6 +304,109 @@ def publish_route(
     )
 
 
+
+def build_junction_camera_image_map(
+    junction_camera_manager: JunctionCameraManager,
+    image_dir: Path,
+) -> dict[str, Path]:
+    """Assign prerecorded ambulance-demo frames to logical junction cameras."""
+    if not image_dir.exists():
+        raise FileNotFoundError(
+            f"Junction-camera image folder not found:\n{image_dir}"
+        )
+
+    images = sorted(
+        path
+        for path in image_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png"}
+    )
+
+    if not images:
+        raise FileNotFoundError(
+            f"No .jpg/.jpeg/.png ambulance demo images found in:\n{image_dir}"
+        )
+
+    mapping = {}
+    camera_ids = list(junction_camera_manager.camera_by_id.keys())
+
+    for index, camera_id in enumerate(camera_ids):
+        mapping[camera_id] = images[index % len(images)]
+
+    print("\nJUNCTION CAMERA PRERECORDED FRAME MAP")
+    print("-" * 72)
+    for camera_id in camera_ids:
+        camera = junction_camera_manager.camera_by_id[camera_id]
+        print(
+            f"{camera_id:14s} -> {camera['junction_id']:4s} "
+            f"-> {mapping[camera_id].name}"
+        )
+    print("-" * 72)
+    print(
+        "Source mode: prerecorded_demo "
+        f"({len(images)} validated frame(s) reused across "
+        f"{len(camera_ids)} logical junction cameras)"
+    )
+
+    return mapping
+
+
+def run_junction_camera_inference(
+    detector: TrafficInferenceV4,
+    junction_camera_manager: JunctionCameraManager,
+    camera_image_map: dict[str, Path],
+    approach: dict,
+    simulation_time: float,
+):
+    """Run one CNN inference for the logical camera on the current TLS approach."""
+    junction_id = approach["junction_id"]
+    camera = junction_camera_manager.get_camera_for_junction(junction_id)
+
+    if camera is None:
+        return None
+
+    camera_id = str(camera["camera_id"])
+    image = camera_image_map.get(camera_id)
+
+    if image is None:
+        raise KeyError(f"No demo image mapped to junction camera {camera_id}")
+
+    inference = detector.predict(image)
+    confidence = inference.get("highest_ambulance_confidence")
+    confidence = float(confidence) if confidence is not None else 0.0
+    detected = bool(inference.get("ambulance_detected", False))
+
+    result = junction_camera_manager.report_detection(
+        camera_id=camera_id,
+        detected=detected,
+        confidence=confidence,
+        simulation_time=simulation_time,
+        metadata={
+            "source_mode": "prerecorded_demo",
+            "image": image.name,
+            "distance_to_signal_m": round(
+                float(approach["distance_to_signal_m"]), 2
+            ),
+            "incoming_edge": approach["incoming_edge"],
+            "outgoing_edge": approach["outgoing_edge"],
+            "ambulance_count": inference.get("ambulance_count", 0),
+            "ambulance_candidate_count": inference.get(
+                "ambulance_candidate_count",
+                inference.get("ambulance_count", 0),
+            ),
+        },
+    )
+
+    print(
+        f"\n[JUNCTION CAMERA CNN] {camera_id} -> {junction_id}"
+        f"\n  Frame              : {image.name}"
+        f"\n  Source mode        : prerecorded_demo"
+        f"\n  Ambulance detected : {detected}"
+        f"\n  Confidence         : {confidence:.4f}"
+        f"\n  Distance to signal : {approach['distance_to_signal_m']:.1f} m"
+    )
+
+    return result
+
 def run_sumo(
     cfg_file: Path,
     net_file: Path,
@@ -318,6 +421,8 @@ def run_sumo(
     hospital_name: str,
     publisher: BackendEventPublisher,
     junction_camera_manager: JunctionCameraManager,
+    detector: TrafficInferenceV4,
+    junction_camera_image_map: dict[str, Path],
 ):
     gc.PREEMPT_DISTANCE_M = max(20.0, threshold)
     gc.GREEN_HOLD_SECONDS = max(5.0, hold)
@@ -418,6 +523,7 @@ def run_sumo(
         pickup_announced = False
         step = 0
         last_vehicle_publish_time = -9999.0
+        processed_junction_camera_approaches = set()
 
         while gc.traci.simulation.getMinExpectedNumber() > 0:
             gc.traci.simulationStep()
@@ -459,6 +565,27 @@ def run_sumo(
                     break
 
                 continue
+
+            # Run visual ambulance confirmation once when the ambulance enters
+            # the preemption zone of a configured junction camera. TraCI
+            # provides route/position confirmation; the CNN provides visual
+            # ambulance confirmation.
+            approach = controller.get_upcoming_tls_approach()
+            if approach is not None:
+                junction_id = approach["junction_id"]
+                if (
+                    approach["distance_to_signal_m"] <= gc.PREEMPT_DISTANCE_M
+                    and junction_camera_manager.has_camera(junction_id)
+                    and junction_id not in processed_junction_camera_approaches
+                ):
+                    run_junction_camera_inference(
+                        detector=detector,
+                        junction_camera_manager=junction_camera_manager,
+                        camera_image_map=junction_camera_image_map,
+                        approach=approach,
+                        simulation_time=sim_time,
+                    )
+                    processed_junction_camera_approaches.add(junction_id)
 
             controller.update()
 
@@ -566,6 +693,7 @@ def run_sumo(
         print("  -> dynamic hospital selection")
         print("  -> A* dynamic route")
         print("  -> TraCI ambulance movement")
+        print("  -> Junction-camera CNN ambulance confirmation")
         print("  -> Green Corridor preemption/restoration")
         print("  -> FastAPI event publishing")
         print("  -> WebSocket-ready dashboard stream")
@@ -640,11 +768,23 @@ def main():
         default="junction_camera_config.json",
         help="JSON configuration for junction ambulance-detection cameras.",
     )
+    parser.add_argument(
+        "--junction-camera-image-dir",
+        default="ambulance demo images",
+        help=(
+            "Folder containing validated prerecorded ambulance frames used "
+            "by the virtual junction-camera demo."
+        ),
+    )
 
     args = parser.parse_args()
 
     model_dir = Path(__file__).resolve().parent
     project_dir = model_dir.parent
+
+    junction_camera_image_dir = Path(args.junction_camera_image_dir)
+    if not junction_camera_image_dir.is_absolute():
+        junction_camera_image_dir = model_dir / junction_camera_image_dir
 
     junction_camera_config = Path(args.junction_camera_config)
     if not junction_camera_config.is_absolute():
@@ -709,6 +849,11 @@ def main():
     print("\nLoading TrafficDetectorV4 once...")
     detector = TrafficInferenceV4()
     print("Model device:", detector.device)
+
+    junction_camera_image_map = build_junction_camera_image_map(
+        junction_camera_manager,
+        junction_camera_image_dir,
+    )
 
     manager = EdgeTrafficManager()
 
@@ -787,6 +932,8 @@ def main():
         hospital_name=selected_hospital_name,
         publisher=publisher,
         junction_camera_manager=junction_camera_manager,
+        detector=detector,
+        junction_camera_image_map=junction_camera_image_map,
     )
 
 
