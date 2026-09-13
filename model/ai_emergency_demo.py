@@ -50,6 +50,39 @@ ROUTE_ID = "AI_DYNAMIC_EMERGENCY_ROUTE"
 # Send live vehicle state every N simulation seconds.
 VEHICLE_PUBLISH_INTERVAL_S = 2.0
 
+# Re-analyse simulated live CCTV traffic every N SUMO seconds.
+REALTIME_TRAFFIC_UPDATE_INTERVAL_S = 30.0
+
+# Dynamic rerouting policy.
+MIN_REROUTE_IMPROVEMENT = 0.10
+REROUTE_COOLDOWN_S = 30.0
+
+# Emergency-vehicle driving policy.
+# We keep SUMO collision/safety checks enabled, but make the ambulance more
+# assertive and equip it with SUMO's native blue-light rescue-lane behavior.
+AMBULANCE_SPEED_FACTOR = 1.15
+AMBULANCE_BLUE_LIGHT_REACTION_DISTANCE_M = 75.0
+AMBULANCE_LC_STRATEGIC = 5.0
+AMBULANCE_LC_SPEED_GAIN = 2.0
+AMBULANCE_LC_ASSERTIVE = 2.0
+
+REALTIME_PHASE_FALLBACKS = {
+    "phase_1": {
+        "CAM_HOSPITAL_DIRECT_1": "low1.jpeg",
+        "CAM_HOSPITAL_DIRECT_2": "low2.jpg",
+        "CAM_HOSPITAL_DIRECT_3": "low1.jpeg",
+        "CAM_ORR_NORTH": "high3.jpg",
+        "CAM_ORR_SOUTH": "high4.jpg",
+    },
+    "phase_2": {
+        "CAM_HOSPITAL_DIRECT_1": "high2.jpg",
+        "CAM_HOSPITAL_DIRECT_2": "high3.jpg",
+        "CAM_HOSPITAL_DIRECT_3": "high4.jpg",
+        "CAM_ORR_NORTH": "low1.jpeg",
+        "CAM_ORR_SOUTH": "low2.jpg",
+    },
+}
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -149,6 +182,119 @@ def analyse_cameras(
                 "timestamp": utc_now(),
             },
         )
+
+
+
+def _find_camera_image_in_phase(
+    phase_dir: Path,
+    camera_id: str,
+    fallback_name: str | None = None,
+) -> Path:
+    """Resolve one traffic-camera frame from a realtime phase folder."""
+    supported = {".jpg", ".jpeg", ".png"}
+
+    for suffix in supported:
+        candidate = phase_dir / f"{camera_id}{suffix}"
+        if candidate.exists():
+            return candidate
+
+    if fallback_name:
+        candidate = phase_dir / fallback_name
+        if candidate.exists():
+            return candidate
+
+    raise FileNotFoundError(
+        f"No realtime frame found for {camera_id} in {phase_dir}. "
+        f"Expected a file named after the camera ID or fallback '{fallback_name}'."
+    )
+
+
+def apply_realtime_traffic_phase(
+    detector: TrafficInferenceV4,
+    manager: EdgeTrafficManager,
+    graph: SumoRoadGraph,
+    phase_dir: Path,
+    phase_name: str,
+    publisher: BackendEventPublisher,
+    routing_json: Path | None = None,
+):
+    """
+    Re-run CNN traffic analysis for a simulated live CCTV phase,
+    update EdgeTrafficManager, and push the new scores into the routing graph.
+
+    Step 1 intentionally updates traffic only. It does not reroute yet.
+    """
+    fallback_map = REALTIME_PHASE_FALLBACKS.get(phase_name, {})
+    camera_ids = list(fallback_map.keys())
+
+    if not phase_dir.exists():
+        raise FileNotFoundError(
+            f"Realtime traffic phase folder not found:\n{phase_dir}"
+        )
+
+    print("\n" + "=" * 96)
+    print(f"[REAL-TIME TRAFFIC UPDATE] phase={phase_name}")
+    print("=" * 96)
+
+    updated = []
+
+    for camera_id in camera_ids:
+        if camera_id not in manager.camera_edge_map:
+            print(f"[WARN] Unknown realtime traffic camera: {camera_id}")
+            continue
+
+        image = _find_camera_image_in_phase(
+            phase_dir,
+            camera_id,
+            fallback_map.get(camera_id),
+        )
+
+        inference = detector.predict(image)
+        density = manager.update_from_inference(camera_id, inference)
+
+        print(
+            f"{camera_id:24s} "
+            f"image={image.name:14s} "
+            f"score={density['traffic_score']:6.2f} "
+            f"level={density['traffic_level']:6s} "
+            f"vehicles={inference['non_ambulance_vehicle_count']:3d}"
+        )
+
+        publisher.publish(
+            "TRAFFIC_OVERVIEW",
+            {
+                "camera_id": camera_id,
+                "image": image.name,
+                "edge_ids": density["mapped_edges"],
+                "vehicle_count": inference["non_ambulance_vehicle_count"],
+                "cnn_detection_count": inference["vehicle_count"],
+                "ambulance_detected": inference["ambulance_detected"],
+                "traffic_score": round(density["traffic_score"], 2),
+                "traffic_level": density["traffic_level"],
+                "source_mode": "realtime_phase_demo",
+                "phase": phase_name,
+                "timestamp": utc_now(),
+            },
+        )
+
+        updated.append(camera_id)
+
+    manager.apply_to_graph(graph)
+
+    if routing_json is not None:
+        manager.save_routing_json(routing_json)
+
+    print("-" * 96)
+    print("Traffic graph updated from latest CNN phase.")
+    print("Traffic graph updated. Dynamic reroute evaluation follows.")
+    print("=" * 96)
+
+    emit_log(
+        publisher,
+        f"Realtime traffic phase {phase_name} applied.",
+        phase=phase_name,
+        updated_cameras=len(updated),
+    )
 
 
 def select_hospital_and_build_route(
@@ -407,6 +553,297 @@ def run_junction_camera_inference(
 
     return result
 
+
+def _remaining_route_cost(
+    graph: SumoRoadGraph,
+    route_edges: list[str],
+) -> float:
+    """
+    Return the current dynamic traffic-aware cost for SUMO edge IDs.
+
+    SumoRoadGraph stores RoadEdge objects in graph.edges, and each RoadEdge
+    exposes dynamic_time_s as a property.
+    """
+    total = 0.0
+
+    for edge_id in route_edges:
+        edge = graph.edges.get(edge_id)
+        if edge is None:
+            return float("inf")
+
+        total += float(edge.dynamic_time_s)
+
+    return total
+
+
+def attempt_dynamic_reroute(
+    graph: SumoRoadGraph,
+    controller,
+    pickup: str,
+    pickup_reached: bool,
+    hospital: str,
+    publisher: BackendEventPublisher,
+    sim_time: float,
+    last_reroute_time: float,
+):
+    """
+    Recalculate a traffic-aware route from the end of the ambulance's
+    current edge.
+
+    BEFORE pickup:
+        current position -> pickup -> selected hospital
+
+    AFTER pickup:
+        current position -> selected hospital
+
+    TraCI setRoute() requires the current edge to remain the first edge of the
+    replacement route, so only the suffix after that edge is recalculated.
+    """
+    if sim_time - last_reroute_time < REROUTE_COOLDOWN_S:
+        return False, last_reroute_time
+
+    if AMBULANCE_ID not in gc.traci.vehicle.getIDList():
+        return False, last_reroute_time
+
+    current_edge = gc.traci.vehicle.getRoadID(AMBULANCE_ID)
+    if not current_edge or current_edge.startswith(":"):
+        return False, last_reroute_time
+
+    current_route = list(gc.traci.vehicle.getRoute(AMBULANCE_ID))
+    current_index = gc.traci.vehicle.getRouteIndex(AMBULANCE_ID)
+
+    if current_index < 0 or current_index >= len(current_route):
+        return False, last_reroute_time
+
+    edge_nodes = controller.edge_nodes.get(current_edge)
+    if not edge_nodes:
+        return False, last_reroute_time
+
+    next_junction = edge_nodes[1]
+
+    # Build a candidate suffix that preserves the emergency workflow.
+    # The ambulance MUST reach pickup before it is allowed to route directly
+    # to the selected hospital.
+    try:
+        if not pickup_reached:
+            if next_junction == pickup:
+                to_pickup_edges = []
+            else:
+                to_pickup = graph.astar(next_junction, pickup)
+                to_pickup_edges = list(to_pickup["edge_path"])
+
+            pickup_to_hospital = graph.astar(pickup, hospital)
+            candidate_suffix = (
+                to_pickup_edges
+                + list(pickup_to_hospital["edge_path"])
+            )
+            routing_target = f"{pickup} -> {hospital}"
+            route_stage = "PRE_PICKUP"
+        else:
+            if next_junction == hospital:
+                return False, last_reroute_time
+
+            to_hospital = graph.astar(next_junction, hospital)
+            candidate_suffix = list(to_hospital["edge_path"])
+            routing_target = hospital
+            route_stage = "POST_PICKUP"
+
+    except ValueError as exc:
+        print(
+            f"[REROUTE] No valid {route_stage if 'route_stage' in locals() else ''} "
+            f"route from {next_junction}: {exc}. Keeping current route."
+        )
+        return False, last_reroute_time
+
+    current_remaining = current_route[current_index:]
+    candidate_route = [current_edge] + candidate_suffix
+
+    if candidate_route == current_remaining:
+        print(
+            f"[REROUTE CHECK t={sim_time:.1f}s] "
+            f"Current {route_stage.lower()} route is still optimal."
+        )
+        return False, last_reroute_time
+
+    # Both alternatives must finish the already-entered current edge, so compare
+    # only the suffix after that edge.
+    current_suffix = current_remaining[1:]
+
+    old_cost = _remaining_route_cost(graph, current_suffix)
+    new_cost = _remaining_route_cost(graph, candidate_suffix)
+
+    if old_cost <= 0.0 or old_cost == float("inf"):
+        return False, last_reroute_time
+
+    improvement = (old_cost - new_cost) / old_cost
+
+    print("\n" + "=" * 96)
+    print(f"[DYNAMIC REROUTE CHECK] t={sim_time:.1f}s")
+    print(f"Route stage         : {route_stage}")
+    print(f"Current edge        : {current_edge}")
+    print(f"Routing from        : {next_junction}")
+    print(f"Required waypoint   : {pickup if not pickup_reached else 'already reached'}")
+    print(f"Routing target      : {routing_target}")
+    print(f"Current suffix cost : {old_cost:.2f} s")
+    print(f"Candidate A* cost   : {new_cost:.2f} s")
+    print(f"Improvement         : {improvement * 100.0:.2f}%")
+    print(f"Required            : {MIN_REROUTE_IMPROVEMENT * 100.0:.0f}%")
+
+    if improvement < MIN_REROUTE_IMPROVEMENT:
+        print("Decision            : KEEP CURRENT ROUTE")
+        print("=" * 96)
+        return False, last_reroute_time
+
+    try:
+        gc.traci.vehicle.setRoute(AMBULANCE_ID, candidate_route)
+    except Exception as exc:
+        print(f"Decision            : REROUTE FAILED - {exc}")
+        print("=" * 96)
+        return False, last_reroute_time
+
+    # Rebuild the rolling corridor from the exact route accepted by TraCI.
+    controller.update_route(candidate_route)
+
+    print("Decision            : REROUTE APPLIED")
+    print("New route           :", " -> ".join(candidate_route))
+    print("=" * 96)
+
+    publisher.publish(
+        "AI_ROUTE",
+        {
+            "ambulance_id": AMBULANCE_ID,
+            "pickup": pickup,
+            "pickup_reached": pickup_reached,
+            "destination": hospital,
+            "route_stage": route_stage,
+            "route": candidate_route,
+            "rerouted": True,
+            "reroute_from_edge": current_edge,
+            "reroute_from_junction": next_junction,
+            "old_remaining_cost_s": round(old_cost, 2),
+            "new_remaining_cost_s": round(new_cost, 2),
+            "improvement_percent": round(improvement * 100.0, 2),
+            "simulation_time": sim_time,
+            "timestamp": utc_now(),
+        },
+    )
+
+    emit_log(
+        publisher,
+        "Ambulance dynamically rerouted after live traffic update.",
+        current_edge=current_edge,
+        routing_from=next_junction,
+        pickup=pickup,
+        pickup_reached=pickup_reached,
+        destination=hospital,
+        route_stage=route_stage,
+        improvement_percent=round(improvement * 100.0, 2),
+        new_route=candidate_route,
+        simulation_time=sim_time,
+    )
+
+    return True, sim_time
+
+
+
+def configure_emergency_vehicle_priority() -> None:
+    """
+    Configure the ambulance for smoother emergency movement while preserving
+    SUMO safety constraints.
+
+    The blue-light device (enabled in the SUMO command) makes nearby vehicles
+    react and form a rescue corridor. These per-vehicle settings additionally
+    improve strategic lane choice and speed-gain behavior.
+    """
+    settings_applied = []
+
+    def try_apply(label, fn):
+        try:
+            fn()
+            settings_applied.append(label)
+        except Exception as exc:
+            print(f"[EMERGENCY PRIORITY WARN] {label}: {exc}")
+
+    # Ensure the native blue-light visuals/behavior are associated with an
+    # emergency-class vehicle.
+    try_apply(
+        "vehicle class = emergency",
+        lambda: gc.traci.vehicle.setVehicleClass(
+            AMBULANCE_ID,
+            "emergency",
+        ),
+    )
+
+    try_apply(
+        "shape class = emergency",
+        lambda: gc.traci.vehicle.setShapeClass(
+            AMBULANCE_ID,
+            "emergency",
+        ),
+    )
+
+    # A modest speed preference. SUMO still applies its car-following,
+    # collision-avoidance and junction safety logic.
+    try_apply(
+        f"speed factor = {AMBULANCE_SPEED_FACTOR}",
+        lambda: gc.traci.vehicle.setSpeedFactor(
+            AMBULANCE_ID,
+            AMBULANCE_SPEED_FACTOR,
+        ),
+    )
+
+    # Explicitly retain normal safety checks rather than turning the ambulance
+    # into a collision-ignoring "ghost" vehicle.
+    try_apply(
+        "speed mode = safe default (31)",
+        lambda: gc.traci.vehicle.setSpeedMode(
+            AMBULANCE_ID,
+            31,
+        ),
+    )
+
+    # Keep SUMO's default safety-aware lane-change mode. The behavioral
+    # parameters below make strategic/speed-gain lane changes more proactive.
+    try_apply(
+        "lane change mode = safety-aware (1621)",
+        lambda: gc.traci.vehicle.setLaneChangeMode(
+            AMBULANCE_ID,
+            1621,
+        ),
+    )
+
+    lane_change_params = {
+        "lcStrategic": AMBULANCE_LC_STRATEGIC,
+        "lcSpeedGain": AMBULANCE_LC_SPEED_GAIN,
+        "lcAssertive": AMBULANCE_LC_ASSERTIVE,
+    }
+
+    for name, value in lane_change_params.items():
+        try_apply(
+            f"laneChangeModel.{name} = {value}",
+            lambda n=name, v=value: gc.traci.vehicle.setParameter(
+                AMBULANCE_ID,
+                f"laneChangeModel.{n}",
+                str(v),
+            ),
+        )
+
+    print("\nEMERGENCY VEHICLE PRIORITY")
+    print("-" * 72)
+    print(
+        f"Blue-light reaction distance : "
+        f"{AMBULANCE_BLUE_LIGHT_REACTION_DISTANCE_M:.0f} m"
+    )
+    print(f"Speed factor                 : {AMBULANCE_SPEED_FACTOR:.2f}")
+    print("Safety mode                  : collision/junction safety retained")
+    print("Lane behavior                : more strategic + assertive")
+    print(
+        f"Applied settings             : "
+        f"{len(settings_applied)}/{5 + len(lane_change_params)}"
+    )
+    print("-" * 72)
+
+
 def run_sumo(
     cfg_file: Path,
     net_file: Path,
@@ -423,6 +860,11 @@ def run_sumo(
     junction_camera_manager: JunctionCameraManager,
     detector: TrafficInferenceV4,
     junction_camera_image_map: dict[str, Path],
+    graph: SumoRoadGraph,
+    traffic_manager: EdgeTrafficManager,
+    realtime_traffic_dir: Path | None = None,
+    realtime_update_interval_s: float = REALTIME_TRAFFIC_UPDATE_INTERVAL_S,
+    routing_json: Path | None = None,
 ):
     gc.PREEMPT_DISTANCE_M = max(20.0, threshold)
     gc.GREEN_HOLD_SECONDS = max(5.0, hold)
@@ -439,6 +881,9 @@ def run_sumo(
         "-c", str(cfg_file),
         "--start",
         "--delay", str(max(0, delay_ms)),
+        "--device.bluelight.explicit", AMBULANCE_ID,
+        "--device.bluelight.reactiondist",
+        str(AMBULANCE_BLUE_LIGHT_REACTION_DISTANCE_M),
         "--log", str(sumo_log),
         "--error-log", str(sumo_error_log),
     ]
@@ -449,6 +894,10 @@ def run_sumo(
     print("Starting SUMO-GUI...")
     print(f"Green trigger : {gc.PREEMPT_DISTANCE_M:.0f} m before TLS")
     print(f"Green hold    : {gc.GREEN_HOLD_SECONDS:.0f} s")
+    print(
+        f"Blue-light    : native SUMO rescue-lane behavior, "
+        f"{AMBULANCE_BLUE_LIGHT_REACTION_DISTANCE_M:.0f} m reaction"
+    )
 
     emit_log(
         publisher,
@@ -481,6 +930,9 @@ def run_sumo(
             AMBULANCE_ID,
             gc.AMBULANCE_COLOR,
         )
+
+        configure_emergency_vehicle_priority()
+        dispatch_time = float(gc.traci.simulation.getTime())
 
         try:
             gc.traci.gui.trackVehicle("View #0", AMBULANCE_ID)
@@ -525,6 +977,39 @@ def run_sumo(
         last_vehicle_publish_time = -9999.0
         processed_junction_camera_approaches = set()
 
+        realtime_phase_dirs = []
+        realtime_phase_index = 0
+        next_realtime_update_time = float(realtime_update_interval_s)
+        last_reroute_time = -9999.0
+        dispatch_time = None
+        pickup_time = None
+        arrival_time = None
+        reroute_count = 0
+
+        if realtime_traffic_dir is not None and realtime_traffic_dir.exists():
+            realtime_phase_dirs = sorted(
+                [
+                    p for p in realtime_traffic_dir.iterdir()
+                    if p.is_dir() and p.name.lower().startswith("phase_")
+                ],
+                key=lambda p: p.name.lower(),
+            )
+
+        if realtime_phase_dirs:
+            print(
+                "Realtime traffic phases loaded: "
+                + ", ".join(p.name for p in realtime_phase_dirs)
+            )
+            print(
+                f"Realtime traffic update interval: "
+                f"{float(realtime_update_interval_s):.0f} simulated seconds\n"
+            )
+        elif realtime_traffic_dir is not None:
+            print(
+                f"[WARN] No phase_* folders found under {realtime_traffic_dir}. "
+                "Realtime traffic updates disabled."
+            )
+
         while gc.traci.simulation.getMinExpectedNumber() > 0:
             gc.traci.simulationStep()
             step += 1
@@ -532,12 +1017,122 @@ def run_sumo(
             sim_time = gc.traci.simulation.getTime()
             vehicle_ids = gc.traci.vehicle.getIDList()
 
+            if (
+                realtime_phase_dirs
+                and realtime_phase_index < len(realtime_phase_dirs)
+                and sim_time >= next_realtime_update_time
+            ):
+                phase_dir = realtime_phase_dirs[realtime_phase_index]
+
+                apply_realtime_traffic_phase(
+                    detector=detector,
+                    manager=traffic_manager,
+                    graph=graph,
+                    phase_dir=phase_dir,
+                    phase_name=phase_dir.name,
+                    publisher=publisher,
+                    routing_json=routing_json,
+                )
+
+                realtime_phase_index += 1
+                next_realtime_update_time += float(realtime_update_interval_s)
+
+                rerouted, last_reroute_time = attempt_dynamic_reroute(
+                    graph=graph,
+                    controller=controller,
+                    pickup=pickup,
+                    pickup_reached=pickup_announced,
+                    hospital=hospital,
+                    publisher=publisher,
+                    sim_time=sim_time,
+                    last_reroute_time=last_reroute_time,
+                )
+                if rerouted:
+                    reroute_count += 1
+
             if AMBULANCE_ID not in vehicle_ids:
                 if step > 3:
                     if controller:
                         controller.restore_all()
 
                     arrived = True
+                    arrival_time = float(sim_time)
+
+                    dispatch_to_pickup = (
+                        pickup_time - dispatch_time
+                        if pickup_time is not None and dispatch_time is not None
+                        else None
+                    )
+                    pickup_to_hospital = (
+                        arrival_time - pickup_time
+                        if pickup_time is not None
+                        else None
+                    )
+                    total_emergency_time = (
+                        arrival_time - dispatch_time
+                        if dispatch_time is not None
+                        else None
+                    )
+
+                    print("\n" + "=" * 96)
+                    print("EMERGENCY RESPONSE METRICS")
+                    print("=" * 96)
+                    print(
+                        "Dispatch -> pickup      : "
+                        + (
+                            f"{dispatch_to_pickup:.1f} simulated s"
+                            if dispatch_to_pickup is not None
+                            else "unavailable"
+                        )
+                    )
+                    print(
+                        "Pickup -> hospital      : "
+                        + (
+                            f"{pickup_to_hospital:.1f} simulated s"
+                            if pickup_to_hospital is not None
+                            else "unavailable"
+                        )
+                    )
+                    print(
+                        "Total emergency travel : "
+                        + (
+                            f"{total_emergency_time:.1f} simulated s"
+                            if total_emergency_time is not None
+                            else "unavailable"
+                        )
+                    )
+                    print(f"Dynamic reroutes       : {reroute_count}")
+                    print("=" * 96)
+
+                    publisher.publish(
+                        "EMERGENCY_METRICS",
+                        {
+                            "ambulance_id": AMBULANCE_ID,
+                            "pickup": pickup,
+                            "destination": hospital,
+                            "destination_name": hospital_name,
+                            "dispatch_time_s": dispatch_time,
+                            "pickup_time_s": pickup_time,
+                            "arrival_time_s": arrival_time,
+                            "dispatch_to_pickup_s": (
+                                round(dispatch_to_pickup, 2)
+                                if dispatch_to_pickup is not None
+                                else None
+                            ),
+                            "pickup_to_hospital_s": (
+                                round(pickup_to_hospital, 2)
+                                if pickup_to_hospital is not None
+                                else None
+                            ),
+                            "total_emergency_travel_s": (
+                                round(total_emergency_time, 2)
+                                if total_emergency_time is not None
+                                else None
+                            ),
+                            "dynamic_reroutes": reroute_count,
+                            "timestamp": utc_now(),
+                        },
+                    )
 
                     publisher.publish(
                         "AMBULANCE_STATUS",
@@ -556,6 +1151,10 @@ def run_sumo(
                         publisher,
                         f"{AMBULANCE_ID} reached {hospital_name} ({hospital}).",
                         simulation_time=sim_time,
+                        dispatch_to_pickup_s=dispatch_to_pickup,
+                        pickup_to_hospital_s=pickup_to_hospital,
+                        total_emergency_travel_s=total_emergency_time,
+                        dynamic_reroutes=reroute_count,
                     )
 
                     print(
@@ -605,6 +1204,7 @@ def run_sumo(
 
             road_id = gc.traci.vehicle.getRoadID(AMBULANCE_ID)
             route_index = gc.traci.vehicle.getRouteIndex(AMBULANCE_ID)
+            live_route = list(gc.traci.vehicle.getRoute(AMBULANCE_ID))
             speed_kmh = gc.traci.vehicle.getSpeed(AMBULANCE_ID) * 3.6
             lane_id = gc.traci.vehicle.getLaneID(AMBULANCE_ID)
 
@@ -619,7 +1219,7 @@ def run_sumo(
                         "edge_id": road_id,
                         "lane_id": lane_id,
                         "route_index": route_index,
-                        "route_length": len(full_route),
+                        "route_length": len(live_route),
                         "speed_kmh": round(speed_kmh, 2),
                         "x": round(x, 2),
                         "y": round(y, 2),
@@ -637,7 +1237,7 @@ def run_sumo(
                     f"[t={sim_time:6.1f}s] "
                     f"edge={road_id:12s} "
                     f"speed={speed_kmh:5.1f} km/h "
-                    f"route_index={route_index}/{len(full_route)-1}"
+                    f"route_index={route_index}/{len(live_route)-1}"
                 )
 
                 emit_log(
@@ -650,14 +1250,28 @@ def run_sumo(
 
                 last_edge = road_id
 
+            # Pickup is confirmed from actual SUMO movement, not from a fixed
+            # route index. After dynamic rerouting, route indexes/lengths can
+            # change, so the reliable event is entering an outgoing road whose
+            # FROM junction is the pickup junction.
+            pickup_departed = False
             if (
                 not pickup_announced
-                and route_index >= len(leg1["edge_path"])
+                and road_id
+                and not road_id.startswith(":")
             ):
+                road_nodes = edge_nodes.get(road_id)
+                pickup_departed = bool(
+                    road_nodes
+                    and road_nodes[0] == pickup
+                )
+
+            if pickup_departed:
+                pickup_time = float(sim_time)
                 print(f"\n>>> EMERGENCY PICKUP {pickup} REACHED")
                 print(
-                    f">>> Continuing on the AI-selected hospital route "
-                    f"to {hospital}.\n"
+                    f">>> Patient collected. Continuing to "
+                    f"{hospital_name} ({hospital}).\n"
                 )
 
                 publisher.publish(
@@ -676,7 +1290,8 @@ def run_sumo(
 
                 emit_log(
                     publisher,
-                    f"Emergency pickup {pickup} reached.",
+                    f"Emergency pickup {pickup} physically reached.",
+                    edge_id=road_id,
                     simulation_time=sim_time,
                 )
 
@@ -790,11 +1405,33 @@ def main():
             "by the virtual junction-camera demo."
         ),
     )
+    parser.add_argument(
+        "--realtime-traffic-dir",
+        default="realtime_traffic",
+        help="Folder containing phase_* subfolders for simulated live traffic.",
+    )
+    parser.add_argument(
+        "--realtime-update-interval",
+        type=float,
+        default=REALTIME_TRAFFIC_UPDATE_INTERVAL_S,
+        help="Simulated seconds between live traffic refreshes.",
+    )
+    parser.add_argument(
+        "--no-realtime-traffic",
+        action="store_true",
+        help="Disable simulated live traffic updates.",
+    )
 
     args = parser.parse_args()
 
     model_dir = Path(__file__).resolve().parent
     project_dir = model_dir.parent
+
+    realtime_traffic_dir = None
+    if not args.no_realtime_traffic:
+        realtime_traffic_dir = Path(args.realtime_traffic_dir)
+        if not realtime_traffic_dir.is_absolute():
+            realtime_traffic_dir = model_dir / realtime_traffic_dir
 
     junction_camera_image_dir = Path(args.junction_camera_image_dir)
     if not junction_camera_image_dir.is_absolute():
@@ -948,6 +1585,11 @@ def main():
         junction_camera_manager=junction_camera_manager,
         detector=detector,
         junction_camera_image_map=junction_camera_image_map,
+        graph=graph,
+        traffic_manager=manager,
+        realtime_traffic_dir=realtime_traffic_dir,
+        realtime_update_interval_s=args.realtime_update_interval,
+        routing_json=traffic_json,
     )
 
 

@@ -382,6 +382,73 @@ class GreenCorridorController:
 
         return True
 
+    def update_route(self, new_route_edges: list[str]) -> None:
+        """
+        Replace the remaining ambulance route used by the rolling corridor.
+
+        Any currently preempted signal is restored first, because it may belong
+        only to the old route. The corridor remains armed and a fresh signal
+        plan is then built for the new TraCI route.
+        """
+        self.restore_all()
+        self.route_edges = list(new_route_edges)
+        self.completed_tls.clear()
+
+        self.route_edge_lengths = {}
+        for edge_id in self.route_edges:
+            try:
+                self.route_edge_lengths[edge_id] = float(
+                    traci.lane.getLength(f"{edge_id}_0")
+                )
+            except Exception:
+                self.route_edge_lengths[edge_id] = 0.0
+
+        self.route_signal_plan = []
+        for i in range(len(self.route_edges) - 1):
+            incoming = self.route_edges[i]
+            outgoing = self.route_edges[i + 1]
+
+            edge_data = self.edge_nodes.get(incoming)
+            if not edge_data:
+                continue
+
+            junction = edge_data[1]
+            if junction not in self.tls_ids:
+                continue
+
+            indices = movement_link_indices(junction, incoming, outgoing)
+            selected = choose_green_phase(junction, indices)
+
+            self.route_signal_plan.append(
+                {
+                    "junction_id": junction,
+                    "incoming_route_index": i,
+                    "incoming_edge": incoming,
+                    "outgoing_edge": outgoing,
+                    "controlled_links": indices,
+                    "selected_phase": selected,
+                }
+            )
+
+        print("\n[GREEN CORRIDOR ROUTE UPDATED]")
+        print("  New edges :", " -> ".join(self.route_edges))
+        print(
+            f"  Route TLS : "
+            f"{', '.join(item['junction_id'] for item in self.route_signal_plan) or 'none'}"
+        )
+
+        if self.publisher is not None:
+            self.publisher.publish(
+                "GREEN_CORRIDOR_STATUS",
+                {
+                    "armed": self.corridor_armed,
+                    "ambulance_id": self.ambulance_id,
+                    "route_updated": True,
+                    "route": self.route_edges,
+                    "simulation_time": traci.simulation.getTime(),
+                },
+            )
+
     def get_upcoming_tls_approach(self):
         if self.ambulance_id not in traci.vehicle.getIDList():
             return None
