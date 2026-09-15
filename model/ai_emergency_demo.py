@@ -70,10 +70,11 @@ AMBULANCE_LC_ASSERTIVE = 2.0
 # aside using SUMO's native blue-light device first; if a leader remains
 # immediately in front of the ambulance, we temporarily request a safe
 # adjacent-lane change for that leader.
-BLOCKER_CLEAR_DISTANCE_M = 35.0
-BLOCKER_FORCE_GAP_M = 12.0
-BLOCKER_LANE_CHANGE_DURATION_S = 8.0
-BLOCKER_ACTION_COOLDOWN_S = 4.0
+BLOCKER_CLEAR_DISTANCE_M = 75.0
+BLOCKER_FORCE_GAP_M = 45.0
+BLOCKER_LANE_CHANGE_DURATION_S = 12.0
+BLOCKER_ACTION_COOLDOWN_S = 5.0
+BLOCKER_MIN_SPEED_FACTOR = 1.08
 
 REALTIME_PHASE_FALLBACKS = {
     "phase_1": {
@@ -860,13 +861,14 @@ def clear_immediate_ambulance_blocker(
     last_actions: dict[str, float],
 ) -> None:
     """
-    Ask a close leader to yield into an adjacent lane when one exists.
+    Early-yield assistance for the immediate vehicle ahead of the ambulance.
 
-    This is deliberately conservative:
-    - only the immediate leader is considered;
-    - only leaders within BLOCKER_CLEAR_DISTANCE_M are touched;
-    - SUMO's lane-change safety checks remain enabled;
-    - no teleporting, collision disabling, or forced speed override is used.
+    The intervention starts before the ambulance is trapped:
+    - detect the immediate leader up to 75 m ahead;
+    - from 45 m, request an adjacent-lane change when possible;
+    - briefly encourage the leader to continue clearing the approach;
+    - keep SUMO collision/junction safety enabled;
+    - never teleport or remove traffic.
     """
     try:
         leader = gc.traci.vehicle.getLeader(
@@ -889,25 +891,24 @@ def clear_immediate_ambulance_blocker(
         return
 
     try:
-        lane_index = int(gc.traci.vehicle.getLaneIndex(leader_id))
         road_id = gc.traci.vehicle.getRoadID(leader_id)
         if not road_id or road_id.startswith(":"):
             return
 
+        lane_index = int(gc.traci.vehicle.getLaneIndex(leader_id))
         lane_count = int(gc.traci.edge.getLaneNumber(road_id))
+        ambulance_lane = int(gc.traci.vehicle.getLaneIndex(AMBULANCE_ID))
+
         candidates = []
         if lane_index - 1 >= 0:
             candidates.append(lane_index - 1)
         if lane_index + 1 < lane_count:
             candidates.append(lane_index + 1)
 
-        if not candidates:
-            return
-
-        # Prefer a lane different from the ambulance lane when possible.
-        ambulance_lane = int(gc.traci.vehicle.getLaneIndex(AMBULANCE_ID))
+        # Prefer a lane that is not the ambulance's current lane.
         candidates.sort(key=lambda idx: idx == ambulance_lane)
 
+        moved = False
         for target_lane in candidates:
             try:
                 gc.traci.vehicle.changeLane(
@@ -915,16 +916,34 @@ def clear_immediate_ambulance_blocker(
                     target_lane,
                     BLOCKER_LANE_CHANGE_DURATION_S,
                 )
-                last_actions[leader_id] = float(sim_time)
+                moved = True
                 print(
-                    f"[EMERGENCY PATH CLEAR] leader={leader_id} "
+                    f"[EMERGENCY EARLY YIELD] leader={leader_id} "
                     f"gap={gap:.1f}m lane={lane_index}->{target_lane}"
                 )
-                return
+                break
             except Exception:
                 continue
+
+        # Help the yielding vehicle finish clearing instead of stopping directly
+        # in front of the ambulance. This remains subject to SUMO safety.
+        try:
+            gc.traci.vehicle.setSpeedFactor(
+                leader_id,
+                max(
+                    float(gc.traci.vehicle.getSpeedFactor(leader_id)),
+                    BLOCKER_MIN_SPEED_FACTOR,
+                ),
+            )
+        except Exception:
+            pass
+
+        if moved:
+            last_actions[leader_id] = float(sim_time)
+
     except Exception:
         return
+
 
 
 def diagnose_ambulance_stop(controller, road_id: str, lane_id: str) -> dict:
