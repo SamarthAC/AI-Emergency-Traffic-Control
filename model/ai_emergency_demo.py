@@ -66,6 +66,15 @@ AMBULANCE_LC_STRATEGIC = 5.0
 AMBULANCE_LC_SPEED_GAIN = 2.0
 AMBULANCE_LC_ASSERTIVE = 2.0
 
+# Stopless-corridor traffic clearing. Nearby leaders are encouraged to move
+# aside using SUMO's native blue-light device first; if a leader remains
+# immediately in front of the ambulance, we temporarily request a safe
+# adjacent-lane change for that leader.
+BLOCKER_CLEAR_DISTANCE_M = 35.0
+BLOCKER_FORCE_GAP_M = 12.0
+BLOCKER_LANE_CHANGE_DURATION_S = 8.0
+BLOCKER_ACTION_COOLDOWN_S = 4.0
+
 REALTIME_PHASE_FALLBACKS = {
     "phase_1": {
         "CAM_HOSPITAL_DIRECT_1": "low1.jpeg",
@@ -844,6 +853,142 @@ def configure_emergency_vehicle_priority() -> None:
     print("-" * 72)
 
 
+
+
+def clear_immediate_ambulance_blocker(
+    sim_time: float,
+    last_actions: dict[str, float],
+) -> None:
+    """
+    Ask a close leader to yield into an adjacent lane when one exists.
+
+    This is deliberately conservative:
+    - only the immediate leader is considered;
+    - only leaders within BLOCKER_CLEAR_DISTANCE_M are touched;
+    - SUMO's lane-change safety checks remain enabled;
+    - no teleporting, collision disabling, or forced speed override is used.
+    """
+    try:
+        leader = gc.traci.vehicle.getLeader(
+            AMBULANCE_ID,
+            BLOCKER_CLEAR_DISTANCE_M,
+        )
+    except Exception:
+        return
+
+    if not leader:
+        return
+
+    leader_id, gap = leader
+    gap = float(gap)
+    if gap > BLOCKER_FORCE_GAP_M:
+        return
+
+    last = float(last_actions.get(leader_id, -9999.0))
+    if sim_time - last < BLOCKER_ACTION_COOLDOWN_S:
+        return
+
+    try:
+        lane_index = int(gc.traci.vehicle.getLaneIndex(leader_id))
+        road_id = gc.traci.vehicle.getRoadID(leader_id)
+        if not road_id or road_id.startswith(":"):
+            return
+
+        lane_count = int(gc.traci.edge.getLaneNumber(road_id))
+        candidates = []
+        if lane_index - 1 >= 0:
+            candidates.append(lane_index - 1)
+        if lane_index + 1 < lane_count:
+            candidates.append(lane_index + 1)
+
+        if not candidates:
+            return
+
+        # Prefer a lane different from the ambulance lane when possible.
+        ambulance_lane = int(gc.traci.vehicle.getLaneIndex(AMBULANCE_ID))
+        candidates.sort(key=lambda idx: idx == ambulance_lane)
+
+        for target_lane in candidates:
+            try:
+                gc.traci.vehicle.changeLane(
+                    leader_id,
+                    target_lane,
+                    BLOCKER_LANE_CHANGE_DURATION_S,
+                )
+                last_actions[leader_id] = float(sim_time)
+                print(
+                    f"[EMERGENCY PATH CLEAR] leader={leader_id} "
+                    f"gap={gap:.1f}m lane={lane_index}->{target_lane}"
+                )
+                return
+            except Exception:
+                continue
+    except Exception:
+        return
+
+
+def diagnose_ambulance_stop(controller, road_id: str, lane_id: str) -> dict:
+    """Collect non-invasive evidence about why the ambulance is stationary."""
+    result = {
+        "reason": "UNKNOWN",
+        "tls_id": None,
+        "tls_state": None,
+        "tls_distance_m": None,
+        "leader_id": None,
+        "leader_gap_m": None,
+        "road_id": road_id,
+        "lane_id": lane_id,
+        "near_intersection": False,
+    }
+
+    # Vehicle directly ahead is the strongest evidence of traffic blockage.
+    try:
+        leader = gc.traci.vehicle.getLeader(AMBULANCE_ID, 100.0)
+        if leader:
+            result["leader_id"] = leader[0]
+            result["leader_gap_m"] = float(leader[1])
+    except Exception:
+        pass
+
+    # Upcoming traffic-light state for this vehicle.
+    try:
+        tls_info = gc.traci.vehicle.getNextTLS(AMBULANCE_ID)
+        if tls_info:
+            tls_id, _, distance_m, state = tls_info[0]
+            result["tls_id"] = str(tls_id)
+            result["tls_distance_m"] = float(distance_m)
+            result["tls_state"] = str(state)
+            result["near_intersection"] = float(distance_m) <= 40.0
+    except Exception:
+        pass
+
+    # Internal SUMO roads represent movement through a junction.
+    if road_id and road_id.startswith(":"):
+        result["near_intersection"] = True
+
+    state = (result["tls_state"] or "").lower()
+    gap = result["leader_gap_m"]
+    tls_dist = result["tls_distance_m"]
+
+    if gap is not None and gap <= 15.0:
+        result["reason"] = "VEHICLE_AHEAD"
+    elif (
+        tls_dist is not None
+        and tls_dist <= 30.0
+        and state in {"r", "y"}
+    ):
+        result["reason"] = "TRAFFIC_SIGNAL"
+        result["near_intersection"] = True
+    elif result["near_intersection"]:
+        result["reason"] = "JUNCTION_CONFLICT_OR_GEOMETRY"
+    elif gap is not None:
+        result["reason"] = "TRAFFIC_AHEAD"
+    else:
+        result["reason"] = "CAR_FOLLOWING_OR_LANE_CHANGE"
+
+    return result
+
+
 def run_sumo(
     cfg_file: Path,
     net_file: Path,
@@ -981,10 +1126,21 @@ def run_sumo(
         realtime_phase_index = 0
         next_realtime_update_time = float(realtime_update_interval_s)
         last_reroute_time = -9999.0
-        dispatch_time = None
+        # dispatch_time was captured immediately after ambulance configuration.
         pickup_time = None
         arrival_time = None
         reroute_count = 0
+
+        # Stop-diagnostic state.
+        STOP_SPEED_KMH = 1.0
+        STOP_CONFIRM_SECONDS = 2.0
+        stop_started_at = None
+        stop_context = None
+        confirmed_stop_count = 0
+        intersection_stop_count = 0
+        longest_stationary_s = 0.0
+        minimum_moving_speed_kmh = float("inf")
+        blocker_clear_actions = {}
 
         if realtime_traffic_dir is not None and realtime_traffic_dir.exists():
             realtime_phase_dirs = sorted(
@@ -1102,6 +1258,20 @@ def run_sumo(
                         )
                     )
                     print(f"Dynamic reroutes       : {reroute_count}")
+                    print(f"Confirmed full stops   : {confirmed_stop_count}")
+                    print(f"Intersection stops     : {intersection_stop_count}")
+                    print(
+                        f"Longest stationary     : "
+                        f"{longest_stationary_s:.1f} simulated s"
+                    )
+                    print(
+                        "Minimum moving speed    : "
+                        + (
+                            f"{minimum_moving_speed_kmh:.1f} km/h"
+                            if minimum_moving_speed_kmh != float("inf")
+                            else "unavailable"
+                        )
+                    )
                     print("=" * 96)
 
                     publisher.publish(
@@ -1130,6 +1300,17 @@ def run_sumo(
                                 else None
                             ),
                             "dynamic_reroutes": reroute_count,
+                            "confirmed_full_stops": confirmed_stop_count,
+                            "intersection_stops": intersection_stop_count,
+                            "longest_stationary_s": round(
+                                longest_stationary_s,
+                                2,
+                            ),
+                            "minimum_moving_speed_kmh": (
+                                round(minimum_moving_speed_kmh, 2)
+                                if minimum_moving_speed_kmh != float("inf")
+                                else None
+                            ),
                             "timestamp": utc_now(),
                         },
                     )
@@ -1207,6 +1388,83 @@ def run_sumo(
             live_route = list(gc.traci.vehicle.getRoute(AMBULANCE_ID))
             speed_kmh = gc.traci.vehicle.getSpeed(AMBULANCE_ID) * 3.6
             lane_id = gc.traci.vehicle.getLaneID(AMBULANCE_ID)
+
+            # Active emergency-path clearing: assist the native blue-light
+            # behavior when an ordinary vehicle remains directly in front.
+            clear_immediate_ambulance_blocker(
+                float(sim_time),
+                blocker_clear_actions,
+            )
+
+            # Stop tracker used to verify the physical-pass stopless policy.
+            # behavior; it tells us what is actually causing full stops.
+            if speed_kmh > STOP_SPEED_KMH:
+                minimum_moving_speed_kmh = min(
+                    minimum_moving_speed_kmh,
+                    speed_kmh,
+                )
+                if stop_started_at is not None:
+                    stopped_for = float(sim_time - stop_started_at)
+                    longest_stationary_s = max(
+                        longest_stationary_s,
+                        stopped_for,
+                    )
+                    if stopped_for >= STOP_CONFIRM_SECONDS:
+                        confirmed_stop_count += 1
+                        if stop_context and stop_context.get("near_intersection"):
+                            intersection_stop_count += 1
+
+                        ctx = stop_context or {}
+                        print("\n[AMBULANCE STOP DIAGNOSTIC]")
+                        print(f"  Duration           : {stopped_for:.1f} s")
+                        print(f"  Reason             : {ctx.get('reason', 'UNKNOWN')}")
+                        print(f"  Road / lane        : {ctx.get('road_id')} / {ctx.get('lane_id')}")
+                        print(
+                            f"  Leader             : "
+                            f"{ctx.get('leader_id') or 'none'}"
+                        )
+                        if ctx.get("leader_gap_m") is not None:
+                            print(
+                                f"  Leader gap         : "
+                                f"{ctx['leader_gap_m']:.1f} m"
+                            )
+                        print(
+                            f"  Next TLS           : "
+                            f"{ctx.get('tls_id') or 'none'}"
+                        )
+                        if ctx.get("tls_distance_m") is not None:
+                            print(
+                                f"  TLS distance       : "
+                                f"{ctx['tls_distance_m']:.1f} m"
+                            )
+                        print(
+                            f"  TLS state          : "
+                            f"{ctx.get('tls_state') or 'n/a'}"
+                        )
+                        print(
+                            f"  Near intersection  : "
+                            f"{bool(ctx.get('near_intersection'))}"
+                        )
+                    stop_started_at = None
+                    stop_context = None
+            else:
+                if stop_started_at is None:
+                    stop_started_at = float(sim_time)
+                    stop_context = diagnose_ambulance_stop(
+                        controller,
+                        road_id,
+                        lane_id,
+                    )
+                else:
+                    # Refresh evidence while stopped; a close leader or red
+                    # signal that appears later is more informative.
+                    latest_context = diagnose_ambulance_stop(
+                        controller,
+                        road_id,
+                        lane_id,
+                    )
+                    if latest_context.get("reason") != "UNKNOWN":
+                        stop_context = latest_context
 
             position = gc.traci.vehicle.getPosition(AMBULANCE_ID)
             x, y = float(position[0]), float(position[1])

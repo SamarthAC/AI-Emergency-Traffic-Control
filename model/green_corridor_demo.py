@@ -390,7 +390,7 @@ class GreenCorridorController:
         only to the old route. The corridor remains armed and a fresh signal
         plan is then built for the new TraCI route.
         """
-        self.restore_all()
+        old_active = dict(self.active)
         self.route_edges = list(new_route_edges)
         self.completed_tls.clear()
 
@@ -429,6 +429,26 @@ class GreenCorridorController:
                     "selected_phase": selected,
                 }
             )
+
+        # Reconcile currently preempted signals with the new route. Preserve a
+        # signal only when the exact incoming -> outgoing ambulance movement is
+        # still present; otherwise restore it safely.
+        new_plan_by_tls = {
+            item["junction_id"]: item
+            for item in self.route_signal_plan
+        }
+        for tls_id, saved in list(old_active.items()):
+            new_item = new_plan_by_tls.get(tls_id)
+            same_movement = bool(
+                new_item
+                and new_item["incoming_edge"] == saved["incoming_edge"]
+                and new_item["outgoing_edge"] == saved["outgoing_edge"]
+            )
+            if same_movement:
+                saved["incoming_route_index"] = new_item["incoming_route_index"]
+                self.active[tls_id] = saved
+            else:
+                self._restore(tls_id)
 
         print("\n[GREEN CORRIDOR ROUTE UPDATED]")
         print("  New edges :", " -> ".join(self.route_edges))
@@ -642,8 +662,14 @@ class GreenCorridorController:
         if route_index < 0 or route_index >= len(self.route_edges):
             return
 
+        # PHYSICAL-PASS RESTORATION:
+        # Route indices can shift after traci.vehicle.setRoute(), so they are
+        # not reliable evidence that a dynamically rerouted ambulance has
+        # actually crossed a signal. Restore only after the vehicle is observed
+        # on the exact outgoing edge for the preempted movement.
+        current_road = traci.vehicle.getRoadID(self.ambulance_id)
         for tls_id, saved in list(self.active.items()):
-            if route_index > saved["incoming_route_index"]:
+            if current_road == saved["outgoing_edge"]:
                 self._restore(tls_id)
 
         if not self.corridor_armed:
@@ -710,14 +736,14 @@ class GreenCorridorController:
         allowed = upcoming[:CORRIDOR_LOOKAHEAD_SIGNALS]
         allowed_ids = {item["junction_id"] for _, _, item in allowed}
 
-        for tls_id in list(self.active.keys()):
-            saved = self.active[tls_id]
-            if (
-                saved["incoming_route_index"] >= route_index
-                and tls_id not in allowed_ids
-            ):
-                self._restore(tls_id)
-
+        # STOPLESS RULE:
+        # Once a route TLS has been preempted, keep its ambulance movement green
+        # until TraCI proves the ambulance has physically progressed beyond the
+        # incoming route edge. Do NOT restore it merely because it falls outside
+        # the rolling lookahead window.
+        #
+        # This fixes the observed J14/J24 failure where a far-ahead signal was
+        # activated, restored before arrival, and was red at the stop line.
         for _, distance, item in allowed:
             self._activate_signal(item, distance)
 
