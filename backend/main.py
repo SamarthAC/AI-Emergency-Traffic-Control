@@ -150,3 +150,17 @@ async def startup_event():
 @app.get("/api/junction-cameras")
 async def get_junction_cameras():
     return state_store.junction_cameras
+
+@app.get("/api/hospital")
+async def get_hospital():
+    return state_store.hospital
+
+
+@app.get("/api/corridor")
+async def get_corridor():
+    return state_store.corridor
+
+
+@app.get("/api/metrics")
+async def get_metrics():
+    return state_store.metrics

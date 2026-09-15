@@ -1,6 +1,10 @@
-from typing import Any, Dict
+from __future__ import annotations
+
+from typing import Any
+
 from pydantic import BaseModel
+
 
 class WSMessage(BaseModel):
     type: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
