@@ -73,3 +73,18 @@ model/runtime_ambulance_calibration.csv
 # ==============================
 __pycache__/
 *.pyc
+venv/
+.venv/
+backend/venv/
+
+# ==============================
+# Frontend build artifacts
+# ==============================
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.tsbuildinfo
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+frontend/npm-debug.log*
