@@ -1,49 +1,46 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  content: [
+    './index.html',
+    './src/**/*.{js,ts,jsx,tsx}',
+  ],
   theme: {
     extend: {
       colors: {
-        background: "#0B1220",
-        surface: "#111827",
-        "surface-hover": "#161F2E",
-        border: "#1F2A3C",
-        primary: {
-          DEFAULT: "#00E5FF",
-          dim: "#0AA8BD",
+        command: {
+          bg: '#080C14',
+          surface: '#0E1524',
+          card: '#131D31',
+          panel: '#10192A',
+          border: '#1E2D4A',
+          borderLight: '#2B3F66',
         },
         emergency: {
-          DEFAULT: "#FF3B30",
-          dim: "#7A1D18",
-        },
-        signal: {
-          green: "#00C853",
-          orange: "#FF9800",
-          red: "#FF3B30",
-        },
-        muted: "#8291A8",
-        "text-primary": "#E6EDF5",
+          red: '#EF4444',
+          redGlow: '#DC2626',
+          amber: '#F59E0B',
+          emerald: '#10B981',
+          cyan: '#00F0FF',
+          blue: '#3B82F6',
+        }
       },
       fontFamily: {
-        display: ["'Rajdhani'", "'Sora'", "sans-serif"],
-        body: ["'Sora'", "'Inter'", "sans-serif"],
-        mono: ["'JetBrains Mono'", "monospace"],
-      },
-      boxShadow: {
-        panel: "0 4px 24px rgba(0,0,0,0.45)",
-        glow: "0 0 12px rgba(0,229,255,0.55)",
-        "glow-red": "0 0 14px rgba(255,59,48,0.7)",
-        "glow-green": "0 0 12px rgba(0,200,83,0.65)",
+        mono: ['JetBrains Mono', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
       animation: {
-        "pulse-slow": "pulse 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        "spin-slow": "spin 3s linear infinite",
+        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'ping-slow': 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+        'radar': 'radar 4s linear infinite',
       },
-      backgroundImage: {
-        "grid-fade":
-          "radial-gradient(circle at 1px 1px, rgba(0,229,255,0.08) 1px, transparent 0)",
-      },
+      keyframes: {
+        radar: {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        }
+      }
     },
   },
   plugins: [],
-};
+}
