@@ -1,0 +1,39 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<nodes>
+  <node id="J00" x="0" y="1800" type="priority" name="Northwest residential" />
+  <node id="J01" x="280" y="1720" type="priority" name="Ambulance station" />
+  <node id="J02" x="620" y="1780" type="traffic_light" name="North market signal" />
+  <node id="J03" x="980" y="1710" type="priority" name="Mixed-use north" />
+  <node id="J04" x="1380" y="1770" type="traffic_light" name="Tech-park junction" />
+  <node id="J05" x="1840" y="1690" type="priority" name="Northeast residential" />
+  <node id="J06" x="80" y="1400" type="priority" name="West residential" />
+  <node id="J07" x="390" y="1360" type="traffic_light" name="Market circle" />
+  <node id="J08" x="760" y="1420" type="priority" name="Commercial connector" />
+  <node id="J09" x="1130" y="1360" type="traffic_light" name="CBD north signal" />
+  <node id="J10" x="1510" y="1430" type="priority" name="East commercial" />
+  <node id="J11" x="2050" y="1380" type="traffic_light" name="Outer arterial north" />
+  <node id="J12" x="20" y="1020" type="priority" name="West local" />
+  <node id="J13" x="360" y="980" type="priority" name="Residential collector" />
+  <node id="J14" x="720" y="1030" type="traffic_light" name="CBD west" />
+  <node id="J15" x="1090" y="970" type="traffic_light" name="CBD central" />
+  <node id="J16" x="1490" y="1020" type="traffic_light" name="CBD east" />
+  <node id="J17" x="1980" y="990" type="priority" name="Emergency pickup zone" />
+  <node id="J18" x="70" y="640" type="priority" name="Southwest residential" />
+  <node id="J19" x="430" y="690" type="traffic_light" name="Metro junction" />
+  <node id="J20" x="790" y="630" type="priority" name="Commercial south" />
+  <node id="J21" x="1150" y="680" type="traffic_light" name="Inner arterial" />
+  <node id="J22" x="1540" y="610" type="priority" name="Hospital corridor west" />
+  <node id="J23" x="2010" y="650" type="traffic_light" name="Outer arterial south" />
+  <node id="J24" x="120" y="260" type="priority" name="Southwest local" />
+  <node id="J25" x="500" y="300" type="priority" name="Residential south" />
+  <node id="J26" x="860" y="250" type="traffic_light" name="South collector" />
+  <node id="J27" x="1210" y="300" type="priority" name="Southern commercial" />
+  <node id="J28" x="1600" y="220" type="traffic_light" name="Hospital approach" />
+  <node id="J29" x="2050" y="280" type="priority" name="South-east ring" />
+  <node id="J30" x="-220" y="120" type="priority" name="Alternate hospital" />
+  <node id="J31" x="370" y="40" type="priority" name="Southwest bypass" />
+  <node id="J32" x="980" y="30" type="priority" name="South bypass" />
+  <node id="J33" x="1500" y="10" type="priority" name="South ring" />
+  <node id="J34" x="2180" y="40" type="priority" name="Main hospital" />
+  <node id="J35" x="2470" y="720" type="priority" name="East bypass" />
+</nodes>

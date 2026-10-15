@@ -1,0 +1,155 @@
+{
+  "image": "medium1.png",
+  "image_width": 1920,
+  "image_height": 1080,
+  "device": "cuda",
+  "vehicle_count": 8,
+  "non_ambulance_vehicle_count": 8,
+  "ambulance_detected": false,
+  "ambulance_count": 0,
+  "highest_ambulance_confidence": null,
+  "class_counts": {
+    "Bus": 1,
+    "Sedan": 2,
+    "Three-wheeler": 2,
+    "Two-wheeler": 3
+  },
+  "detections": [
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.934,
+      "box_normalized": [
+        0.326241,
+        0.392098,
+        0.543911,
+        0.566508
+      ],
+      "box_pixels": [
+        626.4,
+        332.8,
+        1044.3,
+        667.7
+      ]
+    },
+    {
+      "class_id": 1,
+      "class_name": "Sedan",
+      "confidence": 0.8088,
+      "box_normalized": [
+        0.0,
+        0.501538,
+        0.410039,
+        0.777741
+      ],
+      "box_pixels": [
+        0.0,
+        543.0,
+        787.3,
+        1073.3
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7957,
+      "box_normalized": [
+        0.516088,
+        0.341741,
+        0.553485,
+        0.39777
+      ],
+      "box_pixels": [
+        990.9,
+        236.1,
+        1062.7,
+        343.7
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7546,
+      "box_normalized": [
+        0.472056,
+        0.350776,
+        0.56263,
+        0.452009
+      ],
+      "box_pixels": [
+        906.3,
+        253.5,
+        1080.3,
+        447.9
+      ]
+    },
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.7426,
+      "box_normalized": [
+        0.944361,
+        0.283137,
+        0.99876,
+        0.315117
+      ],
+      "box_pixels": [
+        1813.2,
+        123.6,
+        1917.6,
+        185.0
+      ]
+    },
+    {
+      "class_id": 1,
+      "class_name": "Sedan",
+      "confidence": 0.7251,
+      "box_normalized": [
+        0.006635,
+        0.218307,
+        0.082767,
+        0.262079
+      ],
+      "box_pixels": [
+        12.7,
+        0.0,
+        158.9,
+        83.2
+      ]
+    },
+    {
+      "class_id": 4,
+      "class_name": "Bus",
+      "confidence": 0.715,
+      "box_normalized": [
+        0.500685,
+        0.24662,
+        0.972122,
+        0.650833
+      ],
+      "box_pixels": [
+        961.3,
+        53.5,
+        1866.5,
+        829.6
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6647,
+      "box_normalized": [
+        0.729133,
+        0.273023,
+        0.753836,
+        0.301675
+      ],
+      "box_pixels": [
+        1399.9,
+        104.2,
+        1447.4,
+        159.2
+      ]
+    }
+  ]
+}

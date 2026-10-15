@@ -1,0 +1,137 @@
+{
+  "image": "low1.jpeg",
+  "image_width": 739,
+  "image_height": 415,
+  "device": "cuda",
+  "vehicle_count": 7,
+  "non_ambulance_vehicle_count": 6,
+  "ambulance_detected": true,
+  "ambulance_count": 1,
+  "highest_ambulance_confidence": 0.81,
+  "class_counts": {
+    "Ambulance": 1,
+    "Sedan": 1,
+    "Two-wheeler": 5
+  },
+  "detections": [
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8423,
+      "box_normalized": [
+        0.049476,
+        0.307998,
+        0.1109,
+        0.441866
+      ],
+      "box_pixels": [
+        36.6,
+        66.0,
+        82.0,
+        164.9
+      ]
+    },
+    {
+      "class_id": 14,
+      "class_name": "Ambulance",
+      "confidence": 0.81,
+      "box_normalized": [
+        0.189077,
+        0.320081,
+        0.639558,
+        0.724118
+      ],
+      "box_pixels": [
+        139.7,
+        74.9,
+        472.6,
+        373.5
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8067,
+      "box_normalized": [
+        0.0,
+        0.334466,
+        0.057464,
+        0.474332
+      ],
+      "box_pixels": [
+        0.0,
+        85.5,
+        42.5,
+        188.9
+      ]
+    },
+    {
+      "class_id": 1,
+      "class_name": "Sedan",
+      "confidence": 0.748,
+      "box_normalized": [
+        0.442446,
+        0.320291,
+        0.825568,
+        0.595518
+      ],
+      "box_pixels": [
+        327.0,
+        75.0,
+        610.1,
+        278.4
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7,
+      "box_normalized": [
+        0.523649,
+        0.602914,
+        0.550819,
+        0.637015
+      ],
+      "box_pixels": [
+        387.0,
+        283.9,
+        407.1,
+        309.1
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6699,
+      "box_normalized": [
+        0.078585,
+        0.288403,
+        0.11778,
+        0.36358
+      ],
+      "box_pixels": [
+        58.1,
+        51.5,
+        87.0,
+        107.0
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6651,
+      "box_normalized": [
+        0.053713,
+        0.296215,
+        0.104985,
+        0.371936
+      ],
+      "box_pixels": [
+        39.7,
+        57.2,
+        77.6,
+        113.2
+      ]
+    }
+  ]
+}

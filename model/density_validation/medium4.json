@@ -1,0 +1,1041 @@
+{
+  "image": "medium4.jpeg",
+  "image_width": 640,
+  "image_height": 480,
+  "device": "cuda",
+  "vehicle_count": 60,
+  "non_ambulance_vehicle_count": 60,
+  "ambulance_detected": false,
+  "ambulance_count": 0,
+  "highest_ambulance_confidence": null,
+  "class_counts": {
+    "Bicycle": 3,
+    "Bus": 1,
+    "Hatchback": 2,
+    "Sedan": 1,
+    "Three-wheeler": 6,
+    "Two-wheeler": 47
+  },
+  "detections": [
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.9561,
+      "box_normalized": [
+        0.440313,
+        0.325921,
+        0.504849,
+        0.381745
+      ],
+      "box_pixels": [
+        281.8,
+        128.6,
+        323.1,
+        164.3
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.9222,
+      "box_normalized": [
+        0.502831,
+        0.321229,
+        0.535482,
+        0.375128
+      ],
+      "box_pixels": [
+        321.8,
+        125.6,
+        342.7,
+        160.1
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.9203,
+      "box_normalized": [
+        0.111611,
+        0.346425,
+        0.143712,
+        0.397888
+      ],
+      "box_pixels": [
+        71.4,
+        141.7,
+        92.0,
+        174.6
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.9164,
+      "box_normalized": [
+        0.568899,
+        0.317489,
+        0.596119,
+        0.364827
+      ],
+      "box_pixels": [
+        364.1,
+        123.2,
+        381.5,
+        153.5
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.9155,
+      "box_normalized": [
+        0.606871,
+        0.30588,
+        0.628199,
+        0.340827
+      ],
+      "box_pixels": [
+        388.4,
+        115.8,
+        402.0,
+        138.1
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8997,
+      "box_normalized": [
+        0.909872,
+        0.298164,
+        0.932849,
+        0.339086
+      ],
+      "box_pixels": [
+        582.3,
+        110.8,
+        597.0,
+        137.0
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8953,
+      "box_normalized": [
+        0.138393,
+        0.345212,
+        0.178331,
+        0.395542
+      ],
+      "box_pixels": [
+        88.6,
+        140.9,
+        114.1,
+        173.1
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8953,
+      "box_normalized": [
+        0.71706,
+        0.322092,
+        0.764047,
+        0.377505
+      ],
+      "box_pixels": [
+        458.9,
+        126.1,
+        489.0,
+        161.6
+      ]
+    },
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.8914,
+      "box_normalized": [
+        0.307405,
+        0.331323,
+        0.386331,
+        0.38829
+      ],
+      "box_pixels": [
+        196.7,
+        132.0,
+        247.3,
+        168.5
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8805,
+      "box_normalized": [
+        0.077382,
+        0.355536,
+        0.115993,
+        0.403583
+      ],
+      "box_pixels": [
+        49.5,
+        147.5,
+        74.2,
+        178.3
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8801,
+      "box_normalized": [
+        0.444468,
+        0.455883,
+        0.590799,
+        0.595866
+      ],
+      "box_pixels": [
+        284.5,
+        211.8,
+        378.1,
+        301.4
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8755,
+      "box_normalized": [
+        0.878365,
+        0.299497,
+        0.899816,
+        0.337035
+      ],
+      "box_pixels": [
+        562.2,
+        111.7,
+        575.9,
+        135.7
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8754,
+      "box_normalized": [
+        0.570382,
+        0.510291,
+        0.671438,
+        0.681352
+      ],
+      "box_pixels": [
+        365.0,
+        246.6,
+        429.7,
+        356.1
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8661,
+      "box_normalized": [
+        0.303012,
+        0.409346,
+        0.432195,
+        0.563403
+      ],
+      "box_pixels": [
+        193.9,
+        182.0,
+        276.6,
+        280.6
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8638,
+      "box_normalized": [
+        0.553548,
+        0.46303,
+        0.622963,
+        0.587136
+      ],
+      "box_pixels": [
+        354.3,
+        216.3,
+        398.7,
+        295.8
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "Hatchback",
+      "confidence": 0.8531,
+      "box_normalized": [
+        0.519302,
+        0.304318,
+        0.563074,
+        0.34578
+      ],
+      "box_pixels": [
+        332.4,
+        114.8,
+        360.4,
+        141.3
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8495,
+      "box_normalized": [
+        0.43167,
+        0.383031,
+        0.486777,
+        0.463389
+      ],
+      "box_pixels": [
+        276.3,
+        165.1,
+        311.5,
+        216.6
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8426,
+      "box_normalized": [
+        0.680415,
+        0.485828,
+        0.78581,
+        0.646489
+      ],
+      "box_pixels": [
+        435.5,
+        230.9,
+        502.9,
+        333.8
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8354,
+      "box_normalized": [
+        0.006878,
+        0.585082,
+        0.101555,
+        0.680938
+      ],
+      "box_pixels": [
+        4.4,
+        294.5,
+        65.0,
+        355.8
+      ]
+    },
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.8288,
+      "box_normalized": [
+        0.626288,
+        0.292775,
+        0.674425,
+        0.325058
+      ],
+      "box_pixels": [
+        400.8,
+        107.4,
+        431.6,
+        128.0
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8227,
+      "box_normalized": [
+        0.433479,
+        0.428495,
+        0.505853,
+        0.521019
+      ],
+      "box_pixels": [
+        277.4,
+        194.2,
+        323.7,
+        253.5
+      ]
+    },
+    {
+      "class_id": 4,
+      "class_name": "Bus",
+      "confidence": 0.8027,
+      "box_normalized": [
+        0.599217,
+        0.21998,
+        0.643814,
+        0.26723
+      ],
+      "box_pixels": [
+        383.5,
+        60.8,
+        412.0,
+        91.0
+      ]
+    },
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.7716,
+      "box_normalized": [
+        0.045005,
+        0.406991,
+        0.226848,
+        0.556771
+      ],
+      "box_pixels": [
+        28.8,
+        180.5,
+        145.2,
+        276.3
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7715,
+      "box_normalized": [
+        0.791668,
+        0.398886,
+        0.881761,
+        0.518397
+      ],
+      "box_pixels": [
+        506.7,
+        175.3,
+        564.3,
+        251.8
+      ]
+    },
+    {
+      "class_id": 1,
+      "class_name": "Sedan",
+      "confidence": 0.77,
+      "box_normalized": [
+        0.773747,
+        0.310949,
+        0.856741,
+        0.36289
+      ],
+      "box_pixels": [
+        495.2,
+        119.0,
+        548.3,
+        152.2
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7646,
+      "box_normalized": [
+        0.429473,
+        0.336128,
+        0.456642,
+        0.391032
+      ],
+      "box_pixels": [
+        274.9,
+        135.1,
+        292.3,
+        170.3
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7567,
+      "box_normalized": [
+        0.824983,
+        0.394139,
+        0.935646,
+        0.528233
+      ],
+      "box_pixels": [
+        528.0,
+        172.2,
+        598.8,
+        258.1
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7528,
+      "box_normalized": [
+        0.561109,
+        0.574034,
+        0.644252,
+        0.720122
+      ],
+      "box_pixels": [
+        359.1,
+        287.4,
+        412.3,
+        380.9
+      ]
+    },
+    {
+      "class_id": 11,
+      "class_name": "Bicycle",
+      "confidence": 0.7499,
+      "box_normalized": [
+        0.638521,
+        0.33999,
+        0.672493,
+        0.417648
+      ],
+      "box_pixels": [
+        408.7,
+        137.6,
+        430.4,
+        187.3
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7467,
+      "box_normalized": [
+        0.005639,
+        0.586234,
+        0.055505,
+        0.653413
+      ],
+      "box_pixels": [
+        3.6,
+        295.2,
+        35.5,
+        338.2
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7458,
+      "box_normalized": [
+        0.892486,
+        0.280075,
+        0.913855,
+        0.30922
+      ],
+      "box_pixels": [
+        571.2,
+        99.2,
+        584.9,
+        117.9
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7445,
+      "box_normalized": [
+        0.213795,
+        0.39485,
+        0.311014,
+        0.50154
+      ],
+      "box_pixels": [
+        136.8,
+        172.7,
+        199.0,
+        241.0
+      ]
+    },
+    {
+      "class_id": 0,
+      "class_name": "Hatchback",
+      "confidence": 0.7386,
+      "box_normalized": [
+        0.670442,
+        0.307456,
+        0.725244,
+        0.34884
+      ],
+      "box_pixels": [
+        429.1,
+        116.8,
+        464.2,
+        143.3
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7305,
+      "box_normalized": [
+        0.497765,
+        0.380711,
+        0.550579,
+        0.466881
+      ],
+      "box_pixels": [
+        318.6,
+        163.7,
+        352.4,
+        218.8
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7296,
+      "box_normalized": [
+        0.861722,
+        0.2924,
+        0.878316,
+        0.326759
+      ],
+      "box_pixels": [
+        551.5,
+        107.1,
+        562.1,
+        129.1
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7281,
+      "box_normalized": [
+        0.488771,
+        0.286968,
+        0.50608,
+        0.315458
+      ],
+      "box_pixels": [
+        312.8,
+        103.7,
+        323.9,
+        121.9
+      ]
+    },
+    {
+      "class_id": 11,
+      "class_name": "Bicycle",
+      "confidence": 0.7276,
+      "box_normalized": [
+        0.156666,
+        0.558771,
+        0.291669,
+        0.697117
+      ],
+      "box_pixels": [
+        100.3,
+        277.6,
+        186.7,
+        366.2
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7255,
+      "box_normalized": [
+        0.379096,
+        0.328896,
+        0.425908,
+        0.382399
+      ],
+      "box_pixels": [
+        242.6,
+        130.5,
+        272.6,
+        164.7
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7212,
+      "box_normalized": [
+        0.047804,
+        0.35606,
+        0.075547,
+        0.406578
+      ],
+      "box_pixels": [
+        30.6,
+        147.9,
+        48.3,
+        180.2
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7198,
+      "box_normalized": [
+        0.561755,
+        0.648457,
+        0.635185,
+        0.713942
+      ],
+      "box_pixels": [
+        359.5,
+        335.0,
+        406.5,
+        376.9
+      ]
+    },
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.7094,
+      "box_normalized": [
+        0.301948,
+        0.341867,
+        0.337425,
+        0.389117
+      ],
+      "box_pixels": [
+        193.2,
+        138.8,
+        216.0,
+        169.0
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.7082,
+      "box_normalized": [
+        0.643197,
+        0.445209,
+        0.759157,
+        0.572427
+      ],
+      "box_pixels": [
+        411.6,
+        204.9,
+        485.9,
+        286.4
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6973,
+      "box_normalized": [
+        0.102491,
+        0.332653,
+        0.130819,
+        0.369422
+      ],
+      "box_pixels": [
+        65.6,
+        132.9,
+        83.7,
+        156.4
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6969,
+      "box_normalized": [
+        0.228647,
+        0.341787,
+        0.278421,
+        0.380037
+      ],
+      "box_pixels": [
+        146.3,
+        138.7,
+        178.2,
+        163.2
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6926,
+      "box_normalized": [
+        0.512398,
+        0.443898,
+        0.605745,
+        0.54146
+      ],
+      "box_pixels": [
+        327.9,
+        204.1,
+        387.7,
+        266.5
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6923,
+      "box_normalized": [
+        0.325259,
+        0.375789,
+        0.367822,
+        0.435876
+      ],
+      "box_pixels": [
+        208.2,
+        160.5,
+        235.4,
+        199.0
+      ]
+    },
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.69,
+      "box_normalized": [
+        0.125568,
+        0.394015,
+        0.271169,
+        0.493136
+      ],
+      "box_pixels": [
+        80.4,
+        172.2,
+        173.5,
+        235.6
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6868,
+      "box_normalized": [
+        0.157109,
+        0.559654,
+        0.259234,
+        0.687306
+      ],
+      "box_pixels": [
+        100.5,
+        278.2,
+        165.9,
+        359.9
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6864,
+      "box_normalized": [
+        0.790632,
+        0.436051,
+        0.840221,
+        0.51427
+      ],
+      "box_pixels": [
+        506.0,
+        199.1,
+        537.7,
+        249.1
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.681,
+      "box_normalized": [
+        0.746331,
+        0.306633,
+        0.77309,
+        0.341911
+      ],
+      "box_pixels": [
+        477.7,
+        116.2,
+        494.8,
+        138.8
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6741,
+      "box_normalized": [
+        0.705732,
+        0.309542,
+        0.734603,
+        0.344754
+      ],
+      "box_pixels": [
+        451.7,
+        118.1,
+        470.1,
+        140.6
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6735,
+      "box_normalized": [
+        0.550511,
+        0.464826,
+        0.602165,
+        0.531882
+      ],
+      "box_pixels": [
+        352.3,
+        217.5,
+        385.4,
+        260.4
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6727,
+      "box_normalized": [
+        0.03532,
+        0.359076,
+        0.062232,
+        0.400928
+      ],
+      "box_pixels": [
+        22.6,
+        149.8,
+        39.8,
+        176.6
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6712,
+      "box_normalized": [
+        0.418816,
+        0.312866,
+        0.44736,
+        0.352283
+      ],
+      "box_pixels": [
+        268.0,
+        120.2,
+        286.3,
+        145.5
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6664,
+      "box_normalized": [
+        0.240823,
+        0.418639,
+        0.355986,
+        0.533801
+      ],
+      "box_pixels": [
+        154.1,
+        187.9,
+        227.8,
+        261.6
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6624,
+      "box_normalized": [
+        0.467621,
+        0.434546,
+        0.570105,
+        0.535424
+      ],
+      "box_pixels": [
+        299.3,
+        198.1,
+        364.9,
+        262.7
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6611,
+      "box_normalized": [
+        0.86098,
+        0.395015,
+        0.911686,
+        0.451982
+      ],
+      "box_pixels": [
+        551.0,
+        172.8,
+        583.5,
+        209.3
+      ]
+    },
+    {
+      "class_id": 11,
+      "class_name": "Bicycle",
+      "confidence": 0.6601,
+      "box_normalized": [
+        0.524769,
+        0.375287,
+        0.564112,
+        0.460083
+      ],
+      "box_pixels": [
+        335.9,
+        160.2,
+        361.0,
+        214.5
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6575,
+      "box_normalized": [
+        0.776738,
+        0.295687,
+        0.805336,
+        0.328093
+      ],
+      "box_pixels": [
+        497.1,
+        109.2,
+        515.4,
+        130.0
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.6574,
+      "box_normalized": [
+        0.336802,
+        0.386057,
+        0.399706,
+        0.448847
+      ],
+      "box_pixels": [
+        215.6,
+        167.1,
+        255.8,
+        207.3
+      ]
+    }
+  ]
+}

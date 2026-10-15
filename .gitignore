@@ -1,0 +1,90 @@
+# Datasets
+dataset/
+ambulance_raw/
+ambulance_v4/
+
+# Dataset inspection / audit outputs
+ambulance_audit/
+ambulance_box_check/
+
+# Model weights
+*.pth
+
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Generated test / prediction images
+letterbox_v4_random_test.png
+letterbox_v4_test.png
+train_0379_v3_detection.png
+predicted_detection.png
+
+# V4 datasets
+dataset_v4/
+ambulance_clean/
+ambulance_v4/
+
+# PyTorch model weights/checkpoints
+*.pth
+*.pt
+
+# ==============================
+# ML datasets / model weights
+# ==============================
+*.pth
+*.pt
+
+model/dataset/
+model/dataset_v4/
+model/ambulance_raw/
+model/ambulance_clean/
+model/ambulance_v4/
+
+# ==============================
+# Runtime calibration/test data
+# ==============================
+model/runtime_test/
+model/traffic_sweep_results/
+ambulance_error_analysis_v4/
+ambulance_fp_classification_v4/
+
+# ==============================
+# Generated inference outputs
+# ==============================
+model/*result*.jpg
+model/*result*.jpeg
+model/*result*.png
+model/*result*.json
+model/*letterboxed*.jpg
+model/*letterboxed*.jpeg
+
+# Individual local test images
+model/test_amb*
+model/test_image*
+model/auto_test.jpg
+
+# Calibration output
+model/runtime_ambulance_calibration.csv
+
+# ==============================
+# Python generated files
+# ==============================
+__pycache__/
+*.pyc
+venv/
+.venv/
+backend/venv/
+
+# ==============================
+# Frontend build artifacts
+# ==============================
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.tsbuildinfo
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+frontend/npm-debug.log*

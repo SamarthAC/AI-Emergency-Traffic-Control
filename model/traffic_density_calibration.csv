@@ -1,0 +1,16 @@
+file,vehicle_count,weighted_count,occupancy_ratio,average_confidence,traffic_score,traffic_level,ambulance
+high1.json,36,28.105,0.2213,0.7807,81.98,MEDIUM,False
+high2.json,77,62.4433,0.7079,0.811,100.0,HIGH,True
+high3.json,56,44.8005,0.7967,0.8,100.0,HIGH,False
+high4.json,85,66.3222,0.6802,0.7803,100.0,HIGH,False
+high5.json,99,76.5569,0.5465,0.7733,100.0,HIGH,True
+low1.json,9,6.9101,0.3287,0.7678,53.8,MEDIUM,False
+low2.json,9,7.4137,0.1304,0.8237,38.71,LOW,False
+low3.json,9,7.4732,0.1116,0.8304,32.0,LOW,False
+low4.json,8,6.6642,0.1664,0.833,34.2,LOW,True
+low5.json,6,4.7802,0.0565,0.7967,20.71,LOW,False
+medium1.json,39,31.7897,0.1326,0.8151,70.51,MEDIUM,True
+medium2.json,52,41.2083,0.2628,0.7925,87.52,MEDIUM,False
+medium3.json,34,25.9595,0.3045,0.7635,90.3,HIGH,True
+medium4.json,54,41.7882,0.3928,0.7739,87.86,MEDIUM,False
+medium5.json,46,37.1643,0.0959,0.8079,76.39,MEDIUM,False

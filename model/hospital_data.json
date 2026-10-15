@@ -1,0 +1,20 @@
+{
+  "hospitals": [
+    {
+      "hospital_id": "HOSP_MAIN",
+      "name": "Main Hospital",
+      "junction_id": "J47",
+      "beds_available": 6,
+      "doctors_available": 2,
+      "emergency_enabled": true
+    },
+    {
+      "hospital_id": "HOSP_ALT",
+      "name": "Alternate Hospital",
+      "junction_id": "J45",
+      "beds_available": 4,
+      "doctors_available": 1,
+      "emergency_enabled": true
+    }
+  ]
+}
