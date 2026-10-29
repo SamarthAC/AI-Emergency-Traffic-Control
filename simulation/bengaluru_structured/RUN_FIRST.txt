@@ -1,0 +1,13 @@
+BENGALURU STRUCTURED SUMO NETWORK
+
+This bundle includes the original source files and the generated bengaluru_structured.net.xml.
+
+Quick start:
+1. Extract this ZIP into a folder such as simulation\bengaluru_structured\.
+2. Open a terminal in that folder.
+3. Run: sumo-gui -c bengaluru_structured.sumocfg
+
+To regenerate the network from .nod.xml/.edg.xml/.typ.xml instead, run build_and_run.bat.
+
+Key junctions: J01 station, J23 pickup, J45 alternate hospital, J47 main hospital.
+This is a synthetic Bengaluru-inspired network, not an exact map of Bengaluru.

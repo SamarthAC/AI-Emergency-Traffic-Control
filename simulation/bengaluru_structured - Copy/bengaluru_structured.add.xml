@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<additional>
+  <poly id="zone_nw" shape="185,3350 1250,3450 1380,2500 220,2450" color="255,220,170,80" layer="-5" fill="true" />
+  <poly id="zone_university" shape="100,2350 1250,2400 1200,1350 120,1300" color="210,195,255,75" layer="-5" fill="true" />
+  <poly id="zone_cbd" shape="1200,2900 2850,2900 3000,1350 1250,1250" color="255,180,180,70" layer="-5" fill="true" />
+  <poly id="zone_east" shape="2800,2800 4200,2800 4200,1300 2900,1300" color="255,225,170,70" layer="-5" fill="true" />
+  <poly id="zone_sw" shape="120,1400 1650,1400 1700,200 150,150" color="195,235,185,70" layer="-5" fill="true" />
+  <poly id="zone_hospital" shape="2600,1300 4200,1300 4250,150 2500,150" color="180,220,255,80" layer="-5" fill="true" />
+  <poly id="zone_orr" shape="4200,3400 4580,3350 4580,150 4200,150" color="190,235,175,70" layer="-5" fill="true" />
+  <poi id="ambulance_station" x="520" y="3180" color="255,0,0" layer="10" />
+  <poi id="pickup_zone" x="3820" y="2200" color="255,80,80" layer="10" />
+  <poi id="hospital_b" x="3000" y="460" color="220,0,0" layer="10" />
+  <poi id="hospital_a" x="4100" y="500" color="220,0,0" layer="10" />
+  <poi id="tech_park" x="2800" y="3000" color="0,80,200" layer="10" />
+  <poi id="city_market" x="1800" y="2150" color="0,90,170" layer="10" />
+  <poi id="metro_station" x="1740" y="440" color="60,60,200" layer="10" />
+</additional>

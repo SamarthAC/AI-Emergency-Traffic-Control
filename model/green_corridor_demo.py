@@ -252,12 +252,14 @@ class GreenCorridorController:
         edge_nodes: dict,
         publisher=None,
         camera_manager=None,
+        enabled: bool = True,
     ):
         self.ambulance_id = ambulance_id
         self.route_edges = list(route_edges)
         self.edge_nodes = edge_nodes
         self.publisher = publisher
         self.camera_manager = camera_manager
+        self.enabled = enabled
 
         self.tls_ids = set(traci.trafficlight.getIDList())
         self.active = {}
@@ -303,7 +305,10 @@ class GreenCorridorController:
             )
 
         print("\nTraffic lights available in SUMO:", len(self.tls_ids))
-        self.print_route_signals()
+        if self.enabled:
+            self.print_route_signals()
+        else:
+            print("\n[GREEN CORRIDOR DISABLED] Baseline mode — traffic signals follow normal SUMO cycles.\n")
 
     def print_route_signals(self):
         print("\nGREEN CORRIDOR SIGNAL PLAN")
@@ -340,6 +345,8 @@ class GreenCorridorController:
         confidence: float,
         simulation_time: float | None = None,
     ) -> bool:
+        if not self.enabled:
+            return False
         if self.corridor_armed:
             return False
 
@@ -539,6 +546,9 @@ class GreenCorridorController:
         return distance
 
     def _activate_signal(self, plan_item: dict, distance_to_signal: float):
+        if not self.enabled:
+            return False
+
         junction = plan_item["junction_id"]
 
         if junction in self.active or junction in self.completed_tls:
@@ -599,6 +609,7 @@ class GreenCorridorController:
                     "ambulance_id": self.ambulance_id,
                     "incoming_edge": plan_item["incoming_edge"],
                     "outgoing_edge": plan_item["outgoing_edge"],
+                    "incoming_route_index": plan_item["incoming_route_index"],
                     "distance_to_signal_m": round(distance_to_signal, 2),
                     "controlled_links": plan_item["controlled_links"],
                     "selected_phase": green_phase,
@@ -641,6 +652,7 @@ class GreenCorridorController:
                         "restored_phase": saved["phase"],
                         "incoming_edge": saved["incoming_edge"],
                         "outgoing_edge": saved["outgoing_edge"],
+                        "incoming_route_index": saved.get("incoming_route_index"),
                         "simulation_time": traci.simulation.getTime(),
                     },
                 )

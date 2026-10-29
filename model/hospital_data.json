@@ -14,7 +14,7 @@
       "junction_id": "J45",
       "beds_available": 4,
       "doctors_available": 1,
-      "emergency_enabled": true
+      "emergency_enabled": false
     }
   ]
 }

@@ -138,23 +138,71 @@ REALTIME_PHASE_FALLBACKS = {
 
         "CAM_HOSPITAL_DIRECT_3": "low1.jpeg",
 
-        "CAM_ORR_NORTH": "high3.jpg",
+        "CAM_ORR_NORTH": "high3.jpeg",
 
-        "CAM_ORR_SOUTH": "high4.jpg",
+        "CAM_ORR_SOUTH": "high4.jpeg",
+
+        "CAM_ALT_HOSPITAL": "high3.jpeg",
+
+        "CAM_VERTICAL_RIGHT_1": "low1.jpeg",
+
+        "CAM_VERTICAL_RIGHT_2": "low2.jpeg",
+
+        "CAM_J14_J13": "low2.jpeg",
+
+        "CAM_J21_J29": "low1.jpeg",
+
+        "CAM_J22_J23": "low1.jpeg",
+
+        "CAM_J22_J30": "low1.jpeg",
+
+        "CAM_J10_J18": "low1.jpeg",
+
+        "CAM_J11_J19": "low1.jpeg",
+
+        "CAM_J12_J20": "low1.jpeg",
+
+        "CAM_CBD_WEST": "low1.jpeg",
+
+        "CAM_CBD_EAST": "low2.jpeg",
 
     },
 
     "phase_2": {
 
-        "CAM_HOSPITAL_DIRECT_1": "high2.jpg",
+        "CAM_HOSPITAL_DIRECT_1": "high2.jpeg",
 
-        "CAM_HOSPITAL_DIRECT_2": "high3.jpg",
+        "CAM_HOSPITAL_DIRECT_2": "high3.jpeg",
 
-        "CAM_HOSPITAL_DIRECT_3": "high4.jpg",
+        "CAM_HOSPITAL_DIRECT_3": "high4.jpeg",
 
         "CAM_ORR_NORTH": "low1.jpeg",
 
-        "CAM_ORR_SOUTH": "low2.jpg",
+        "CAM_ORR_SOUTH": "low2.jpeg",
+
+        "CAM_ALT_HOSPITAL": "low1.jpeg",
+
+        "CAM_VERTICAL_RIGHT_1": "high3.jpeg",
+
+        "CAM_VERTICAL_RIGHT_2": "high4.jpeg",
+
+        "CAM_J14_J13": "high3.jpeg",
+
+        "CAM_J21_J29": "high2.jpeg",
+
+        "CAM_J22_J23": "high2.jpeg",
+
+        "CAM_J22_J30": "high2.jpeg",
+
+        "CAM_J10_J18": "high2.jpeg",
+
+        "CAM_J11_J19": "high2.jpeg",
+
+        "CAM_J12_J20": "high2.jpeg",
+
+        "CAM_CBD_WEST": "high2.jpeg",
+
+        "CAM_CBD_EAST": "high3.jpeg",
 
     },
 
@@ -269,7 +317,6 @@ def analyse_cameras(
             raise KeyError(
 
                 f"Unknown camera '{camera_id}'. Valid cameras: "
-
                 + ", ".join(manager.get_known_camera_ids())
 
             )
@@ -334,8 +381,8 @@ def analyse_cameras(
 
         )
 
-def _find_live_camera_image(live_camera_dir: Path, camera_id: str) -> Path:
-    """Resolve exactly one watched frame for a logical traffic camera."""
+def _find_live_camera_image(live_camera_dir: Path, camera_id: str) -> Path | None:
+    """Resolve exactly one watched frame for a logical traffic camera. Returns None if not found."""
     matches = [
         live_camera_dir / f"{camera_id}{suffix}"
         for suffix in LIVE_CAMERA_SUFFIXES
@@ -343,13 +390,7 @@ def _find_live_camera_image(live_camera_dir: Path, camera_id: str) -> Path:
     ]
 
     if not matches:
-        expected = ", ".join(
-            f"{camera_id}{suffix}" for suffix in LIVE_CAMERA_SUFFIXES
-        )
-        raise FileNotFoundError(
-            f"Live camera frame missing for {camera_id} in {live_camera_dir}. "
-            f"Expected one of: {expected}"
-        )
+        return None
 
     if len(matches) > 1:
         names = ", ".join(path.name for path in matches)
@@ -385,11 +426,14 @@ def _live_camera_signature(image: Path) -> tuple[int, int]:
 def snapshot_live_camera_signatures(
     live_camera_dir: Path,
 ) -> dict[str, tuple[int, int]]:
-    """Remember the currently processed version of each live traffic frame."""
+    """Remember the currently processed version of each live traffic frame.
+    Only captures signatures for cameras that have image files.
+    """
     signatures = {}
     for camera_id in LIVE_TRAFFIC_CAMERA_IDS:
         image = _find_live_camera_image(live_camera_dir, camera_id)
-        signatures[camera_id] = _live_camera_signature(image)
+        if image is not None:
+            signatures[camera_id] = _live_camera_signature(image)
     return signatures
 
 
@@ -514,7 +558,6 @@ def _find_camera_image_in_phase(
     raise FileNotFoundError(
 
         f"No realtime frame found for {camera_id} in {phase_dir}. "
-
         f"Expected a file named after the camera ID or fallback '{fallback_name}'."
 
     )
@@ -536,7 +579,6 @@ def apply_realtime_traffic_phase(
     routing_json: Path | None = None,
 
 ):
-
     """
 
     Re-run CNN traffic analysis for a simulated live CCTV phase,
@@ -592,13 +634,9 @@ def apply_realtime_traffic_phase(
         print(
 
             f"{camera_id:24s} "
-
             f"image={image.name:14s} "
-
             f"score={density['traffic_score']:6.2f} "
-
             f"level={density['traffic_level']:6s} "
-
             f"vehicles={inference['non_ambulance_vehicle_count']:3d}"
 
         )
@@ -678,7 +716,6 @@ def select_hospital_and_build_route(
     publisher: BackendEventPublisher,
 
 ):
-
     """
 
     1. Compute station -> pickup.
@@ -728,15 +765,10 @@ def select_hospital_and_build_route(
             print(
 
                 f"{candidate['name']:24s} "
-
                 f"junction={candidate['junction_id']:4s} "
-
                 f"beds={candidate['beds_available']:2d} "
-
                 f"doctors={candidate['doctors_available']:2d} "
-
                 f"route_cost={candidate['dynamic_cost_s']:.2f} s "
-
                 f"distance={candidate['distance_m']:.2f} m"
 
             )
@@ -748,9 +780,7 @@ def select_hospital_and_build_route(
             print(
 
                 f"{candidate['name']:24s} "
-
                 f"junction={candidate['junction_id']:4s} "
-
                 f"NOT ELIGIBLE - {reason}"
 
             )
@@ -1000,7 +1030,6 @@ def build_junction_camera_image_map(
         print(
 
             f"{camera_id:14s} -> {camera['junction_id']:4s} "
-
             f"-> {mapping[camera_id].name}"
 
         )
@@ -1010,9 +1039,7 @@ def build_junction_camera_image_map(
     print(
 
         "Source mode: prerecorded_demo "
-
         f"({len(images)} validated frame(s) reused across "
-
         f"{len(camera_ids)} logical junction cameras)"
 
     )
@@ -1032,9 +1059,7 @@ def run_junction_camera_inference(
     simulation_time: float,
 
 ):
-
     """Run one CNN inference for the logical camera on the current TLS approach."""
-
     junction_id = approach["junction_id"]
 
     camera = junction_camera_manager.get_camera_for_junction(junction_id)
@@ -1104,15 +1129,10 @@ def run_junction_camera_inference(
     print(
 
         f"\n[JUNCTION CAMERA CNN] {camera_id} -> {junction_id}"
-
         f"\n  Frame              : {image.name}"
-
         f"\n  Source mode        : prerecorded_demo"
-
         f"\n  Ambulance detected : {detected}"
-
         f"\n  Confidence         : {confidence:.4f}"
-
         f"\n  Distance to signal : {approach['distance_to_signal_m']:.1f} m"
 
     )
@@ -1170,7 +1190,6 @@ def attempt_dynamic_reroute(
     last_reroute_time: float,
 
 ):
-
     """
 
     Recalculate a traffic-aware route from the end of the ambulance's
@@ -1274,7 +1293,6 @@ def attempt_dynamic_reroute(
         print(
 
             f"[REROUTE] No valid {route_stage if 'route_stage' in locals() else ''} "
-
             f"route from {next_junction}: {exc}. Keeping current route."
 
         )
@@ -1290,7 +1308,6 @@ def attempt_dynamic_reroute(
         print(
 
             f"[REROUTE CHECK t={sim_time:.1f}s] "
-
             f"Current {route_stage.lower()} route is still optimal."
 
         )
@@ -1356,10 +1373,15 @@ def attempt_dynamic_reroute(
         return False, last_reroute_time
 
     # IMPORTANT: after TraCI setRoute(), SUMO can retain the already-travelled
+
     # route prefix and keep getRouteIndex() relative to that full route. Feeding
+
     # only candidate_route (which starts at the current edge) into the Green
+
     # Corridor can therefore make its route indices inconsistent with TraCI.
+
     # Always rebuild the corridor from the exact route TraCI reports back.
+
     accepted_route = list(gc.traci.vehicle.getRoute(AMBULANCE_ID))
     controller.update_route(accepted_route)
 
@@ -1484,7 +1506,6 @@ def replan_full_hospital_leg_at_pickup(
     candidate_route = [current_edge] + fresh_edges
     current_remaining = current_route[current_index:]
     old_post_pickup = current_remaining[1:]
-
     old_cost = _remaining_route_cost(graph, old_post_pickup)
     new_cost = _remaining_route_cost(graph, fresh_edges)
     changed = candidate_route != current_remaining
@@ -1569,7 +1590,6 @@ def replan_full_hospital_leg_at_pickup(
     return True, changed
 
 def configure_emergency_vehicle_priority() -> None:
-
     """
 
     Configure the ambulance for smoother emergency movement while preserving
@@ -1719,7 +1739,6 @@ def configure_emergency_vehicle_priority() -> None:
     print(
 
         f"Blue-light reaction distance : "
-
         f"{AMBULANCE_BLUE_LIGHT_REACTION_DISTANCE_M:.0f} m"
 
     )
@@ -1733,7 +1752,6 @@ def configure_emergency_vehicle_priority() -> None:
     print(
 
         f"Applied settings             : "
-
         f"{len(settings_applied)}/{5 + len(lane_change_params)}"
 
     )
@@ -1847,7 +1865,6 @@ def clear_immediate_ambulance_blocker(
                 print(
 
                     f"[EMERGENCY EARLY YIELD] leader={leader_id} "
-
                     f"gap={gap:.1f}m lane={lane_index}->{target_lane}"
 
                 )
@@ -2046,6 +2063,8 @@ def run_sumo(
 
     pickup_replan_enabled: bool = False,
 
+    enable_green_corridor: bool = True,
+
 ):
 
     gc.PREEMPT_DISTANCE_M = max(20.0, threshold)
@@ -2099,7 +2118,6 @@ def run_sumo(
     print(
 
         f"Blue-light    : native SUMO rescue-lane behavior, "
-
         f"{AMBULANCE_BLUE_LIGHT_REACTION_DISTANCE_M:.0f} m reaction"
 
     )
@@ -2180,6 +2198,8 @@ def run_sumo(
 
             camera_manager=junction_camera_manager,
 
+            enabled=enable_green_corridor,
+
         )
 
         publisher.publish(
@@ -2218,7 +2238,13 @@ def run_sumo(
 
         print("The ambulance is following the AI-selected route.")
 
-        print("Green Corridor controller ACTIVE.")
+        if enable_green_corridor:
+
+            print("Green Corridor controller ACTIVE.")
+
+        else:
+
+            print("Green Corridor controller DISABLED (Baseline mode).")
 
         print("Live backend publishing ACTIVE.\n")
 
@@ -2279,47 +2305,83 @@ def run_sumo(
         blocker_clear_actions = {}
 
         if live_camera_dir is not None:
+
             live_camera_signatures = snapshot_live_camera_signatures(live_camera_dir)
+
             print("LIVE CAMERA WATCH MODE ACTIVE")
+
             print(f"Watched folder : {live_camera_dir}")
+
             print(
+
                 f"Poll interval  : "
+
                 f"{float(live_camera_poll_interval_s):.1f} simulated seconds"
+
             )
+
             print(
+
                 "Replace any CAM_*.jpg/.jpeg/.png frame while SUMO is running. "
                 "The CNN, traffic graph, A*, TraCI route and Green Corridor "
                 "will update from the new frame.\n"
+
             )
+
             if pickup_replan_enabled:
+
                 print(
+
                     "Pickup replan  : ENABLED - pre-pickup live traffic changes "
                     "are accumulated and the complete J23 -> hospital leg is "
                     "freshly committed at pickup.\n"
+
                 )
+
         elif realtime_traffic_dir is not None and realtime_traffic_dir.exists():
+
             realtime_phase_dirs = sorted(
+
                 [
+
                     p for p in realtime_traffic_dir.iterdir()
+
                     if p.is_dir() and p.name.lower().startswith("phase_")
+
                 ],
+
                 key=lambda p: p.name.lower(),
+
             )
 
         if live_camera_dir is None:
+
             if realtime_phase_dirs:
+
                 print(
+
                     "Realtime traffic phases loaded: "
+
                     + ", ".join(p.name for p in realtime_phase_dirs)
+
                 )
+
                 print(
+
                     f"Realtime traffic update interval: "
+
                     f"{float(realtime_update_interval_s):.0f} simulated seconds\n"
+
                 )
+
             elif realtime_traffic_dir is not None:
+
                 print(
+
                     f"[WARN] No phase_* folders found under {realtime_traffic_dir}. "
+
                     "Realtime traffic updates disabled."
+
                 )
 
         while gc.traci.simulation.getMinExpectedNumber() > 0:
@@ -2333,54 +2395,101 @@ def run_sumo(
             vehicle_ids = gc.traci.vehicle.getIDList()
 
             # Live-camera mode: re-run CNN only for overwritten frames.
+
             if (
+
                 live_camera_dir is not None
+
                 and sim_time >= next_live_camera_poll_time
+
             ):
+
                 changed_cameras = apply_live_camera_changes(
+
                     detector=detector,
+
                     manager=traffic_manager,
+
                     graph=graph,
+
                     live_camera_dir=live_camera_dir,
+
                     signatures=live_camera_signatures,
+
                     publisher=publisher,
+
                     simulation_time=sim_time,
+
                     routing_json=routing_json,
+
                 )
+
                 next_live_camera_poll_time = (
+
                     float(sim_time) + max(0.1, float(live_camera_poll_interval_s))
+
                 )
+
                 if changed_cameras:
+
                     live_reroute_pending = True
 
             # If a frame changed during the cooldown, evaluate once the cooldown
+
             # expires instead of forgetting the traffic update.
+
             if (
+
                 live_reroute_pending
+
                 and AMBULANCE_ID in vehicle_ids
+
                 and sim_time - last_reroute_time >= REROUTE_COOLDOWN_S
+
             ):
+
                 # In pickup-replan presentation mode, live frames still update
+
                 # the CNN traffic state and dashboard before pickup, but the
+
                 # hospital leg is deliberately committed as one fresh decision
+
                 # at J23. After pickup, continuous rerouting works normally.
+
                 if pickup_replan_enabled and not pickup_announced:
+
                     pass
+
                 else:
+
                     current_live_edge = gc.traci.vehicle.getRoadID(AMBULANCE_ID)
+
                     if current_live_edge and not current_live_edge.startswith(":"):
+
                         rerouted, last_reroute_time = attempt_dynamic_reroute(
+
                             graph=graph,
+
                             controller=controller,
+
                             pickup=pickup,
+
                             pickup_reached=pickup_announced,
+
                             hospital=hospital,
+
                             publisher=publisher,
+
                             sim_time=sim_time,
+
                             last_reroute_time=last_reroute_time,
+
                         )
+
                         live_reroute_pending = False
+
                         if rerouted:
+
                             reroute_count += 1
 
             if (
@@ -2492,7 +2601,6 @@ def run_sumo(
                     print(
 
                         "Dispatch -> pickup      : "
-
                         + (
 
                             f"{dispatch_to_pickup:.1f} simulated s"
@@ -2508,7 +2616,6 @@ def run_sumo(
                     print(
 
                         "Pickup -> hospital      : "
-
                         + (
 
                             f"{pickup_to_hospital:.1f} simulated s"
@@ -2524,7 +2631,6 @@ def run_sumo(
                     print(
 
                         "Total emergency travel : "
-
                         + (
 
                             f"{total_emergency_time:.1f} simulated s"
@@ -2538,6 +2644,7 @@ def run_sumo(
                     )
 
                     print(f"Dynamic reroutes       : {reroute_count}")
+
                     print(f"Pickup-stage replans   : {pickup_replan_count}")
 
                     print(f"Confirmed full stops   : {confirmed_stop_count}")
@@ -2555,7 +2662,6 @@ def run_sumo(
                     print(
 
                         "Minimum moving speed    : "
-
                         + (
 
                             f"{minimum_moving_speed_kmh:.1f} km/h"
@@ -2785,40 +2891,73 @@ def run_sumo(
             lane_id = gc.traci.vehicle.getLaneID(AMBULANCE_ID)
 
             # Mission-transition replan: when the ambulance is physically
+
             # approaching the pickup junction, calculate a completely fresh
+
             # J23 -> hospital A* path from the latest camera-derived traffic
+
             # graph BEFORE it commits to an outgoing pickup road.
+
             if (
+
                 pickup_replan_enabled
+
                 and not pickup_route_replanned
+
                 and not pickup_announced
+
                 and road_id
+
                 and not road_id.startswith(":")
+
             ):
+
                 pickup_edge_nodes = edge_nodes.get(road_id)
+
                 if pickup_edge_nodes and pickup_edge_nodes[1] == pickup:
+
                     try:
+
                         lane_position_m = float(
+
                             gc.traci.vehicle.getLanePosition(AMBULANCE_ID)
+
                         )
+
                         lane_length_m = float(gc.traci.lane.getLength(lane_id))
+
                         pickup_distance_m = max(0.0, lane_length_m - lane_position_m)
+
                     except Exception:
+
                         pickup_distance_m = float("inf")
 
                     if pickup_distance_m <= PICKUP_REPLAN_DISTANCE_M:
+
                         completed, route_changed = replan_full_hospital_leg_at_pickup(
+
                             graph=graph,
+
                             controller=controller,
+
                             pickup=pickup,
+
                             hospital=hospital,
+
                             hospital_name=hospital_name,
+
                             publisher=publisher,
+
                             sim_time=sim_time,
+
                         )
+
                         if completed:
+
                             pickup_route_replanned = True
+
                             live_reroute_pending = False
+
                             pickup_replan_count += 1
 
             # Active emergency-path clearing: assist the native blue-light
@@ -3018,11 +3157,8 @@ def run_sumo(
                 print(
 
                     f"[t={sim_time:6.1f}s] "
-
                     f"edge={road_id:12s} "
-
                     f"speed={speed_kmh:5.1f} km/h "
-
                     f"route_index={route_index}/{len(live_route)-1}"
 
                 )
@@ -3230,15 +3366,18 @@ def main():
         required=False,
 
         help=(
+
             "Initial traffic camera image. Repeat for multiple cameras. "
+
             "Not required when --live-cameras is used."
+
         ),
 
     )
 
     parser.add_argument("--station", default="J01")
 
-    parser.add_argument("--pickup", default="J23")
+    parser.add_argument("--pickup", default="J10")
 
     parser.add_argument(
 
@@ -3335,40 +3474,69 @@ def main():
     )
 
     parser.add_argument(
+
         "--live-cameras",
+
         action="store_true",
+
         help=(
+
             "Watch a live camera folder for overwritten traffic frames. "
+
             "This disables phase_1/phase_2 and triggers CNN analysis + A* "
+
             "re-evaluation whenever an input image changes."
+
         ),
+
     )
 
     parser.add_argument(
+
         "--live-camera-dir",
+
         default="live_inputs",
+
         help=(
+
             "Folder containing one CAM_HOSPITAL_DIRECT_1/2/3 and "
+
             "CAM_ORR_NORTH/SOUTH .jpg/.jpeg/.png frame each."
+
         ),
+
     )
 
     parser.add_argument(
+
         "--live-camera-poll-interval",
+
         type=float,
+
         default=LIVE_CAMERA_POLL_INTERVAL_S,
+
         help="Simulated seconds between file checks in --live-cameras mode.",
+
     )
 
     parser.add_argument(
+
         "--pickup-replan",
+
         action="store_true",
+
         help=(
+
             "At the pickup mission transition, commit a fresh complete "
+
             "pickup-to-hospital A* route from the latest traffic state. "
+
             "When used with --live-cameras, pre-pickup image changes update "
+
             "traffic/UI but are deferred as a hospital-route decision until J23."
+
         ),
+
     )
 
     parser.add_argument(
@@ -3403,6 +3571,16 @@ def main():
 
     )
 
+    parser.add_argument(
+
+        "--no-green-corridor",
+
+        action="store_true",
+
+        help="Run baseline simulation WITHOUT Green Corridor signal preemption.",
+
+    )
+
     args = parser.parse_args()
 
     model_dir = Path(__file__).resolve().parent
@@ -3410,26 +3588,41 @@ def main():
     project_dir = model_dir.parent
 
     live_camera_dir = None
+
     realtime_traffic_dir = None
 
     if args.live_cameras:
+
         live_camera_dir = Path(args.live_camera_dir)
+
         if not live_camera_dir.is_absolute():
+
             live_camera_dir = model_dir / live_camera_dir
 
         # Live mode intentionally replaces the deterministic phase_1/phase_2 demo.
+
         camera_args = build_live_camera_args(live_camera_dir)
+
     else:
+
         if not args.camera:
+
             parser.error(
+
                 "Provide at least one --camera CAMERA_ID IMAGE_PATH, or use "
+
                 "--live-cameras with a populated live_inputs folder."
+
             )
+
         camera_args = args.camera
 
         if not args.no_realtime_traffic:
+
             realtime_traffic_dir = Path(args.realtime_traffic_dir)
+
             if not realtime_traffic_dir.is_absolute():
+
                 realtime_traffic_dir = model_dir / realtime_traffic_dir
 
     junction_camera_image_dir = Path(args.junction_camera_image_dir)
@@ -3523,8 +3716,11 @@ def main():
     print("Backend     :", "OFF" if args.no_backend else args.backend_url)
 
     print(
+
         "Traffic mode:",
+
         "LIVE CAMERA WATCH" if args.live_cameras else "PHASE DEMO",
+
     )
 
     print("Junction cams:", junction_camera_manager.camera_count)
@@ -3590,6 +3786,10 @@ def main():
     print("\nTraffic state saved to:")
 
     print(traffic_json)
+
+    # Apply initial traffic scores to graph BEFORE computing initial route
+    # so that the ambulance uses traffic-aware routing from the start
+    manager.apply_to_graph(graph)
 
     leg1, leg2, full_route, selected_hospital, selected_hospital_name, hospital_selection = (
 
@@ -3706,6 +3906,8 @@ def main():
         live_camera_poll_interval_s=args.live_camera_poll_interval,
 
         pickup_replan_enabled=args.pickup_replan,
+
+        enable_green_corridor=not args.no_green_corridor,
 
     )
 

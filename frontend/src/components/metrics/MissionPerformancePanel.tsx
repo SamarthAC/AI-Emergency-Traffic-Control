@@ -45,7 +45,7 @@ export const MissionPerformancePanel: React.FC = () => {
           <strong className="text-xl font-bold text-cyan-400 my-1">
             {dispatchToPickup} s
           </strong>
-          <span className="text-[9px] text-slate-500">J01 &rarr; J23</span>
+          <span className="text-[9px] text-slate-500">J01 &rarr; J10</span>
         </div>
 
         {/* Pickup to Hospital */}
@@ -56,7 +56,7 @@ export const MissionPerformancePanel: React.FC = () => {
           <strong className="text-xl font-bold text-cyan-400 my-1">
             {pickupToHospital} s
           </strong>
-          <span className="text-[9px] text-slate-500">J23 &rarr; J47</span>
+          <span className="text-[9px] text-slate-500">J10 &rarr; J47</span>
         </div>
 
         {/* Dynamic Reroutes (En route) */}

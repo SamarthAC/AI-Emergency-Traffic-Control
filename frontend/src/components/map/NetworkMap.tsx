@@ -81,6 +81,18 @@ export const NetworkMap: React.FC = () => {
     };
   }, [route]);
 
+  // Edges of the previous hospital corridor before replanning
+  const previousRouteEdges = useMemo(() => {
+    const prevSet = new Set<string>();
+    const prevList = route?.previous_post_pickup_route || [];
+    prevList.forEach((edge) => {
+      prevSet.add(edge);
+      const parts = edge.split('_');
+      if (parts.length === 2) prevSet.add(`${parts[1]}_${parts[0]}`);
+    });
+    return prevSet;
+  }, [route?.previous_post_pickup_route]);
+
   // Edges associated with the currently selected camera
   const selectedCameraEdges = useMemo(() => {
     if (!selectedCameraId) return new Set<string>();
@@ -151,13 +163,23 @@ export const NetworkMap: React.FC = () => {
           <div className="px-2.5 py-1 rounded-lg bg-cyan-950/90 border border-cyan-400/70 text-[11px] font-mono text-cyan-300 flex items-center gap-1.5 shadow-lg animate-pulse">
             <Route className="w-3.5 h-3.5 text-cyan-400" />
             <span>PICKUP-STAGE CORRIDOR REPLAN</span>
+            {typeof route.improvement_percent === 'number' && route.improvement_percent > 0 && (
+              <span className="text-emerald-400 font-bold ml-1">
+                ({route.improvement_percent.toFixed(1)}% cost reduction)
+              </span>
+            )}
           </div>
         )}
 
         {route?.rerouted && !isPickupReplanStage && (
-          <div className="px-2.5 py-1 rounded-lg bg-amber-950/80 border border-amber-500/50 text-[11px] font-mono text-amber-300 flex items-center gap-1.5 shadow-lg animate-pulse">
-            <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-            <span>DYNAMIC REROUTE ACTIVE</span>
+          <div className="px-2.5 py-1 rounded-lg bg-emerald-950/90 border border-emerald-500/70 text-[11px] font-mono text-emerald-300 flex items-center gap-1.5 shadow-lg animate-pulse">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <span>ROUTE UPDATED</span>
+            {typeof route.improvement_percent === 'number' && route.improvement_percent > 0 && (
+              <span className="text-emerald-300 font-bold ml-1">
+                ({route.improvement_percent.toFixed(1)}% lower traffic-aware cost)
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -298,6 +320,46 @@ export const NetworkMap: React.FC = () => {
             })}
           </g>
 
+          {/* 1.5. Previous Route Layer (Rendered as muted dashed line after a reroute) */}
+          {route?.rerouted && previousRouteEdges.size > 0 && (
+            <g id="previousRouteLayer" opacity="0.65">
+              {NETWORK_EDGES.map((edge) => {
+                const isPrevSegment = previousRouteEdges.has(edge.id);
+                const isCurrentActive = allActiveEdges.has(edge.id);
+                // Only render if it was part of previous route and is NOT part of current active route
+                if (!isPrevSegment || isCurrentActive) return null;
+
+                const p1 = getJunctionSvgPos(edge.from);
+                const p2 = getJunctionSvgPos(edge.to);
+
+                return (
+                  <g key={`prev_${edge.id}`}>
+                    <line
+                      x1={p1.x}
+                      y1={p1.y}
+                      x2={p2.x}
+                      y2={p2.y}
+                      stroke="#64748B"
+                      strokeWidth="6"
+                      strokeDasharray="8 6"
+                      strokeLinecap="round"
+                    />
+                    <line
+                      x1={p1.x}
+                      y1={p1.y}
+                      x2={p2.x}
+                      y2={p2.y}
+                      stroke="#94A3B8"
+                      strokeWidth="2"
+                      strokeDasharray="4 6"
+                      strokeLinecap="round"
+                    />
+                  </g>
+                );
+              })}
+            </g>
+          )}
+
           {/* 2. Active AI Emergency Route Highlight Layer */}
           <g id="activeRouteLayer">
             {NETWORK_EDGES.map((edge) => {
@@ -325,7 +387,7 @@ export const NetworkMap: React.FC = () => {
                         : '#38BDF8'
                     }
                     strokeWidth={isPostPickup && isPickupReplanStage ? '12' : '10'}
-                    strokeOpacity="0.7"
+                    strokeOpacity="0.75"
                     strokeLinecap="round"
                     filter={isPostPickup && isPickupReplanStage ? 'url(#replanGlow)' : 'url(#routeGlow)'}
                   />
@@ -349,7 +411,8 @@ export const NetworkMap: React.FC = () => {
             {CONTROLLED_SIGNALS.map((jId) => {
               const pos = getJunctionSvgPos(jId);
               const sigState = signals[jId];
-              const isGreen = sigState?.green_corridor_active || (corridor.armed && allActiveEdges.size > 0);
+              // Strictly verify active green corridor on this signal - do not fabricate green
+              const isGreen = Boolean(sigState?.green_corridor_active);
               const isArmed = Boolean(corridor.armed);
 
               return (
@@ -361,6 +424,11 @@ export const NetworkMap: React.FC = () => {
                   isGreenCorridorActive={isGreen}
                   isArmed={isArmed}
                   state={sigState?.state || 'NORMAL'}
+                  distanceToSignalM={sigState?.distance_to_signal_m}
+                  controlledLinks={sigState?.controlled_links}
+                  phaseState={sigState?.phase_state}
+                  incomingEdge={sigState?.incoming_edge}
+                  outgoingEdge={sigState?.outgoing_edge}
                 />
               );
             })}
@@ -371,7 +439,7 @@ export const NetworkMap: React.FC = () => {
             {Object.values(SUMO_JUNCTIONS).map((junction) => {
               const pos = sumoToSvg(junction.x, junction.y);
               const isStation = junction.type === 'station' || junction.id === 'J01';
-              const isPickup = junction.type === 'pickup' || junction.id === 'J23';
+              const isPickup = junction.type === 'pickup' || junction.id === 'J10';
               const isAltHospital = junction.id === 'J45';
               const isMainHospital = junction.type === 'hospital' || junction.id === 'J47';
 
@@ -385,7 +453,7 @@ export const NetworkMap: React.FC = () => {
                   label = 'Ambulance Base (J01)';
                 } else if (isPickup) {
                   badgeColor = '#EF4444';
-                  label = 'Emergency Pickup (J23)';
+                  label = 'Emergency Pickup (J10)';
                 } else if (isMainHospital) {
                   badgeColor = '#10B981';
                   label = 'Main Hospital (J47)';

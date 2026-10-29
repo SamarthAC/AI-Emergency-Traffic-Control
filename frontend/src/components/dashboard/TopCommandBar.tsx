@@ -23,6 +23,8 @@ export const TopCommandBar: React.FC = () => {
     setIsVisionModalOpen,
     setSelectedCameraId,
     resetDashboard,
+    demoMode,
+    setDemoMode,
   } = useDashboardStore();
 
   const [isResetting, setIsResetting] = useState(false);
@@ -102,13 +104,53 @@ export const TopCommandBar: React.FC = () => {
           <span className="text-xs font-bold text-slate-100">{simTime}s</span>
           <span className="text-[10px] text-slate-500">({formatTime(simTime)})</span>
         </div>
+      </div>
 
-        {/* Green Corridor Active Status */}
-        {corridor.armed && (
-          <Badge variant="emerald" size="sm" pulse>
-            GREEN CORRIDOR ARMED
-          </Badge>
-        )}
+      {/* Demo Mode Segmented Toggle (Requirement 4) */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center bg-slate-900/90 p-1 rounded-lg border border-slate-700/80 shadow-inner">
+          <button
+            onClick={() => {
+              setDemoMode('WITHOUT_CORRIDOR');
+              dashboardApi.setDemoMode('WITHOUT_CORRIDOR');
+            }}
+            className={`px-2.5 py-1 rounded text-xs font-mono font-bold transition-all ${
+              demoMode === 'WITHOUT_CORRIDOR'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/60 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            WITHOUT GREEN CORRIDOR
+          </button>
+          <button
+            onClick={() => {
+              setDemoMode('WITH_CORRIDOR');
+              dashboardApi.setDemoMode('WITH_CORRIDOR');
+            }}
+            className={`px-2.5 py-1 rounded text-xs font-mono font-bold transition-all ${
+              demoMode === 'WITH_CORRIDOR'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/60 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            WITH GREEN CORRIDOR
+          </button>
+        </div>
+
+        <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-command-panel border border-command-border text-[11px] font-mono">
+          <span className="text-slate-400">DEMO MODE:</span>
+          {demoMode === 'WITH_CORRIDOR' ? (
+            <span className="text-emerald-400 font-bold flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              WITH GREEN CORRIDOR
+            </span>
+          ) : (
+            <span className="text-amber-400 font-bold flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              WITHOUT GREEN CORRIDOR
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Right Controls & Connection Status */}

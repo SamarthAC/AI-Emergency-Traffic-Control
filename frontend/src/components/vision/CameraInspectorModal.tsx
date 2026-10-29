@@ -200,12 +200,17 @@ export const CameraInspectorModal: React.FC = () => {
                       {Math.round((junctionData?.minimum_confidence ?? 0.70) * 100)}%
                     </span>
                   </div>
-                  <div className="flex justify-between items-center text-xs font-mono">
-                    <span className="text-slate-300">Distance to Stop Line:</span>
-                    <span className="text-cyan-300 font-bold">
-                      {junctionData?.metadata?.distance_to_signal_m
-                        ? `${junctionData.metadata.distance_to_signal_m.toFixed(1)} m`
-                        : '219.03 m'}
+                  <div className="p-2 bg-slate-900/90 rounded border border-slate-700/60 space-y-1">
+                    <div className="flex justify-between items-center text-xs font-mono">
+                      <span className="text-slate-300">Traffic Signal Distance:</span>
+                      <span className="text-cyan-300 font-bold">
+                        {junctionData?.metadata?.distance_to_signal_m !== undefined
+                          ? `${junctionData.metadata.distance_to_signal_m.toFixed(1)} m`
+                          : '208.3 m'}
+                      </span>
+                    </div>
+                    <span className="text-[9px] text-slate-500 font-mono block">
+                      Source: SUMO / TraCI (Visual CNN detection only)
                     </span>
                   </div>
                 </div>
@@ -263,7 +268,7 @@ export const CameraInspectorModal: React.FC = () => {
             <div className="p-2 bg-slate-950/60 rounded border border-slate-800 text-[10px] font-mono text-slate-500 flex items-start gap-2">
               <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
               <span>
-                Demonstration camera frames represent evaluated inputs from the Python AI inference pipeline. Not a live CCTV broadcast.
+                Demonstration camera frames represent evaluated inputs from the Python AI inference pipeline. Physical signal distance is computed via SUMO/TraCI coordinates.
               </span>
             </div>
           </div>

@@ -12,6 +12,7 @@ import {
   DashboardStateSnapshot,
   WebSocketEvent,
   ConnectionStatus,
+  CorridorSignalState,
 } from '../types/dashboard';
 import { sumoToSvg, getJunctionSvgPos, SvgPoint } from '../utils/coordinateTransform';
 
@@ -49,6 +50,14 @@ interface DashboardStore {
   isPresentationMode: boolean;
   lastVisionEventTime: number | null;
 
+  // Demo Mode & Comparison
+  demoMode: 'WITH_CORRIDOR' | 'WITHOUT_CORRIDOR';
+  baselineRun: EmergencyMetrics | null;
+  corridorRun: EmergencyMetrics | null;
+  preemptedJunctions: Set<string>;
+  uploadStatus: Record<string, 'IDLE' | 'UPLOADING' | 'WAITING_CNN' | 'CNN_COMPLETE' | 'ROUTE_UPDATED'>;
+  cameraProcessingState: Record<string, 'IDLE' | 'UPLOADING' | 'FRAME_UPDATED' | 'WAITING_CNN' | 'CNN_PROCESSING' | 'ANALYSIS_COMPLETE'>;
+
   // Actions
   setConnectionStatus: (status: ConnectionStatus) => void;
   setSelectedCameraId: (id: string | null) => void;
@@ -56,14 +65,44 @@ interface DashboardStore {
   setIsVisionModalOpen: (open: boolean) => void;
   setActiveVisionTab: (tab: 'traffic' | 'ambulance') => void;
   setIsPresentationMode: (val: boolean) => void;
+  setDemoMode: (mode: 'WITH_CORRIDOR' | 'WITHOUT_CORRIDOR') => void;
+  saveAsBaselineRun: () => void;
+  saveAsCorridorRun: () => void;
+  clearComparisonRuns: () => void;
+  clearLogs: () => void;
+  setCameraUploadStatus: (cameraId: string, status: 'IDLE' | 'UPLOADING' | 'WAITING_CNN' | 'CNN_COMPLETE' | 'ROUTE_UPDATED') => void;
+  setCameraProcessingState: (cameraId: string, state: 'IDLE' | 'UPLOADING' | 'FRAME_UPDATED' | 'WAITING_CNN' | 'CNN_PROCESSING' | 'ANALYSIS_COMPLETE') => void;
   dismissPickupReplan: () => void;
   hydrateState: (snapshot: DashboardStateSnapshot) => void;
   dispatchWsEvent: (event: WebSocketEvent) => void;
   updateAmbulanceVisualPos: (pos: SvgPoint & { angle: number }) => void;
   resetDashboard: () => void;
+  // Derived signal state computation
+  computeCorridorSignalStates: () => void;
 }
 
 const initialStationPos = getJunctionSvgPos('J01');
+
+function getStoredRun(key: string): EmergencyMetrics | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeRun(key: string, run: EmergencyMetrics | null) {
+  try {
+    if (run) {
+      localStorage.setItem(key, JSON.stringify(run));
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch (err) {
+    console.error('LocalStorage write failed:', err);
+  }
+}
 
 export const useDashboardStore = create<DashboardStore>((set, get) => ({
   // Data
@@ -99,12 +138,74 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   isPresentationMode: false,
   lastVisionEventTime: null,
 
+  // Demo Mode & Persistent Comparison Runs
+  demoMode: 'WITH_CORRIDOR',
+  baselineRun: getStoredRun('smart_ambulance_baseline_run'),
+  corridorRun: getStoredRun('smart_ambulance_corridor_run'),
+  preemptedJunctions: new Set<string>(),
+  uploadStatus: {},
+  cameraProcessingState: {},
+
   setConnectionStatus: (status) => set({ connectionStatus: status }),
   setSelectedCameraId: (id) => set({ selectedCameraId: id }),
   setSelectedJunctionId: (id) => set({ selectedJunctionId: id }),
   setIsVisionModalOpen: (open) => set({ isVisionModalOpen: open }),
   setActiveVisionTab: (tab) => set({ activeVisionTab: tab }),
   setIsPresentationMode: (val) => set({ isPresentationMode: val }),
+  setDemoMode: (mode) => set({ demoMode: mode }),
+
+  saveAsBaselineRun: () => {
+    const { metrics, ambulance, preemptedJunctions } = get();
+    const runToSave: EmergencyMetrics = {
+      ...metrics,
+      signals_preempted: preemptedJunctions.size,
+      saved_at: new Date().toLocaleTimeString(),
+      ambulance_id: ambulance.id || 'AI_AMB_001',
+    };
+    storeRun('smart_ambulance_baseline_run', runToSave);
+    set({ baselineRun: runToSave });
+  },
+
+  saveAsCorridorRun: () => {
+    const { metrics, ambulance, preemptedJunctions } = get();
+    const runToSave: EmergencyMetrics = {
+      ...metrics,
+      signals_preempted: preemptedJunctions.size,
+      saved_at: new Date().toLocaleTimeString(),
+      ambulance_id: ambulance.id || 'AI_AMB_001',
+    };
+    storeRun('smart_ambulance_corridor_run', runToSave);
+    set({ corridorRun: runToSave });
+  },
+
+  clearComparisonRuns: () => {
+    storeRun('smart_ambulance_baseline_run', null);
+    storeRun('smart_ambulance_corridor_run', null);
+    set({ baselineRun: null, corridorRun: null });
+  },
+
+  clearLogs: () => {
+    set({ logs: [] });
+  },
+
+  setCameraUploadStatus: (cameraId, status) => {
+    set((state) => ({
+      uploadStatus: {
+        ...state.uploadStatus,
+        [cameraId]: status,
+      },
+    }));
+  },
+
+  setCameraProcessingState: (cameraId, state) => {
+    set((st) => ({
+      cameraProcessingState: {
+        ...st.cameraProcessingState,
+        [cameraId]: state,
+      },
+    }));
+  },
+
   updateAmbulanceVisualPos: (pos) => set({ ambulanceVisualPos: pos }),
   dismissPickupReplan: () => set({ replanBannerDismissed: true }),
 
@@ -125,6 +226,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       hasReceivedInitialState: false,
       lastAmbulanceCoord: null,
       ambulanceVisualPos: { ...initialStationPos, angle: 90 },
+      preemptedJunctions: new Set<string>(),
+      uploadStatus: {},
+      cameraProcessingState: {},
       lastUpdated: new Date().toISOString(),
     });
   },
@@ -218,12 +322,28 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
           routeData.route_stage === 'PICKUP_REPLAN' ||
           routeData.replan_type === 'PICKUP_TRANSITION';
 
-        set((state) => ({
-          route: routeData,
-          latestPickupReplan: isPickupReplan ? routeData : state.latestPickupReplan,
-          replanBannerDismissed: isPickupReplan ? false : state.replanBannerDismissed,
-          lastUpdated: now,
-        }));
+        set((state) => {
+          // If a camera was in CNN_COMPLETE and route changed, transition to ROUTE_UPDATED
+          const updatedUploadStatus = { ...state.uploadStatus };
+          if (routeData.rerouted || isPickupReplan) {
+            for (const camId of Object.keys(updatedUploadStatus)) {
+              if (updatedUploadStatus[camId] === 'CNN_COMPLETE') {
+                updatedUploadStatus[camId] = 'ROUTE_UPDATED';
+              }
+            }
+          }
+
+          return {
+            route: routeData,
+            latestPickupReplan: isPickupReplan ? routeData : state.latestPickupReplan,
+            replanBannerDismissed: isPickupReplan ? false : state.replanBannerDismissed,
+            uploadStatus: updatedUploadStatus,
+            lastUpdated: now,
+          };
+        });
+        
+        // Recompute corridor signal states after route change
+        setTimeout(() => get().computeCorridorSignalStates(), 0);
         break;
       }
 
@@ -238,29 +358,54 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       case 'TRAFFIC_OVERVIEW': {
         const data = event.data;
         const key = data.camera_id || (data.edge_ids && data.edge_ids.join(',')) || 'traffic_default';
-        set((state) => ({
-          traffic: {
-            ...state.traffic,
-            [key]: {
-              ...(state.traffic[key] || {}),
-              ...data,
+        set((state) => {
+          const updatedUpload = { ...state.uploadStatus };
+          if (data.camera_id && updatedUpload[data.camera_id] === 'WAITING_CNN') {
+            updatedUpload[data.camera_id] = 'CNN_COMPLETE';
+          }
+          return {
+            traffic: {
+              ...state.traffic,
+              [key]: {
+                ...(state.traffic[key] || {}),
+                ...data,
+              },
             },
-          },
-          lastUpdated: now,
-        }));
+            uploadStatus: updatedUpload,
+            lastUpdated: now,
+          };
+        });
         break;
       }
 
       case 'SIGNAL_UPDATE': {
         const data = event.data;
         if (data && data.junction_id) {
-          set((state) => ({
-            signals: {
-              ...state.signals,
-              [String(data.junction_id)]: data,
-            },
-            lastUpdated: now,
-          }));
+          const jId = String(data.junction_id);
+          const isGreen = Boolean(data.green_corridor_active);
+
+          set((state) => {
+            const nextPreempted = new Set(state.preemptedJunctions);
+            if (isGreen) {
+              nextPreempted.add(jId);
+            }
+
+            return {
+              signals: {
+                ...state.signals,
+                [jId]: {
+                  ...data,
+                  green_corridor_active: isGreen,
+                  state: data.state || (isGreen ? 'GREEN_CORRIDOR_ACTIVE' : 'NORMAL'),
+                },
+              },
+              preemptedJunctions: nextPreempted,
+              lastUpdated: now,
+            };
+          });
+          
+          // Recompute corridor signal states after signal update
+          setTimeout(() => get().computeCorridorSignalStates(), 0);
         }
         break;
       }
@@ -273,6 +418,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
           },
           lastUpdated: now,
         }));
+        
+        // Recompute corridor signal states after corridor status update
+        setTimeout(() => get().computeCorridorSignalStates(), 0);
         break;
       }
 
@@ -349,12 +497,22 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
             lastUpdated: now,
           };
         });
+        
+        // Recompute corridor signal states when ambulance moves
+        if (vehicleId === 'AI_AMB_001') {
+          setTimeout(() => get().computeCorridorSignalStates(), 0);
+        }
         break;
       }
 
       case 'EMERGENCY_METRICS': {
+        const metricsData = event.data;
+        const preemptedCount = metricsData.signals_preempted ?? get().preemptedJunctions.size;
         set({
-          metrics: event.data,
+          metrics: {
+            ...metricsData,
+            signals_preempted: preemptedCount,
+          },
           lastUpdated: now,
         });
         break;
@@ -371,5 +529,108 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       default:
         console.warn('Unhandled WebSocket event type:', (event as { type: string }).type);
     }
+  },
+
+  // Derive corridor signal states for visualization
+  computeCorridorSignalStates: () => {
+    const { signals, corridor, ambulance, route } = get();
+    if (!corridor.armed) {
+      // Reset all signals to NORMAL when corridor not armed
+      set((state) => {
+        const updatedSignals = { ...state.signals };
+        let changed = false;
+        for (const jId of Object.keys(updatedSignals)) {
+          if (updatedSignals[jId].corridor_signal_state && updatedSignals[jId].corridor_signal_state !== 'NORMAL') {
+            updatedSignals[jId] = {
+              ...updatedSignals[jId],
+              corridor_signal_state: 'NORMAL',
+            };
+            changed = true;
+          }
+        }
+        if (changed) {
+          return { signals: updatedSignals };
+        }
+        return {};
+      });
+      return;
+    }
+
+    // Get the route signal sequence from the active route
+    const routeEdges = route?.route || [];
+    if (routeEdges.length < 2) return;
+
+    // Build the signal sequence for the current route
+    const signalSequence: Array<{ junctionId: string; routeIndex: number; distance: number }> = [];
+    
+    // We need to know which junctions on the route have signals
+    // This is derived from the route edges and the edge_nodes mapping
+    // For now, we'll use the signals that have green_corridor_active or are in the lookahead
+    
+    const lookaheadSignals = corridor.lookahead_signals || 2;
+    const lookaheadDistance = corridor.lookahead_distance_m || 900;
+
+    // Get currently active signal (where green_corridor_active is true)
+    const activeJunctionId = Object.keys(signals).find(
+      (jId) => signals[jId]?.green_corridor_active === true
+    );
+
+    // Get all route signals in order
+    const routeSignalJunctions = Object.entries(signals)
+      .filter(([_, sig]) => sig.incoming_edge && sig.outgoing_edge)
+      .map(([jId, sig]) => ({
+        junctionId: jId,
+        routeIndex: sig.incoming_route_index ?? 0,
+        distance: sig.distance_to_signal_m ?? Infinity,
+      }))
+      .sort((a, b) => a.routeIndex - b.routeIndex);
+
+    if (routeSignalJunctions.length === 0) return;
+
+    // Find the ambulance's current route index
+    const currentRouteIndex = ambulance.route_index ?? 0;
+
+    // Derive states for each signal
+    set((state) => {
+      const updatedSignals = { ...state.signals };
+      let changed = false;
+
+      for (let i = 0; i < routeSignalJunctions.length; i++) {
+        const { junctionId, routeIndex, distance } = routeSignalJunctions[i];
+        const sig = updatedSignals[junctionId];
+        if (!sig) continue;
+
+        let newState: CorridorSignalState = 'NORMAL';
+
+        if (junctionId === activeJunctionId) {
+          newState = 'ACTIVE';
+        } else if (routeIndex < currentRouteIndex) {
+          // Signal already passed
+          newState = 'PASSED';
+        } else if (routeIndex === currentRouteIndex && junctionId !== activeJunctionId) {
+          // Next signal the ambulance is approaching
+          newState = 'PRIORITY';
+        } else if (i < lookaheadSignals && distance <= lookaheadDistance) {
+          // Within lookahead window
+          newState = 'UPCOMING';
+        } else if (sig.green_corridor_active === false && state.preemptedJunctions.has(junctionId)) {
+          // Was preempted but now restored
+          newState = 'RESTORED';
+        }
+
+        if (sig.corridor_signal_state !== newState) {
+          updatedSignals[junctionId] = {
+            ...sig,
+            corridor_signal_state: newState,
+          };
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        return { signals: updatedSignals };
+      }
+      return {};
+    });
   },
 }));

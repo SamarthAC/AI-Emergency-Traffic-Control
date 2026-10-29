@@ -8,11 +8,11 @@ export const MissionCompletedBanner: React.FC = () => {
   const isArrived = String(ambulance.status).toUpperCase() === 'ARRIVED';
   if (!isArrived) return null;
 
-  const totalTime = metrics.total_emergency_travel_s ?? 426;
-  const dynamicReroutes = metrics.dynamic_reroutes ?? 2;
-  const pickupReplans = metrics.pickup_stage_replans ?? 1;
-  const stops = metrics.intersection_stops ?? 0;
-  const hospitalName = hospital.selected_hospital?.name || ambulance.destination_name || 'Main Hospital — J47';
+  const totalTime = metrics.total_emergency_travel_s !== undefined && metrics.total_emergency_travel_s !== null ? `${metrics.total_emergency_travel_s} s` : '--';
+  const dynamicReroutes = metrics.dynamic_reroutes !== undefined && metrics.dynamic_reroutes !== null ? metrics.dynamic_reroutes : '--';
+  const pickupReplans = metrics.pickup_stage_replans !== undefined && metrics.pickup_stage_replans !== null ? metrics.pickup_stage_replans : '--';
+  const stops = metrics.intersection_stops !== undefined && metrics.intersection_stops !== null ? metrics.intersection_stops : (metrics.confirmed_full_stops !== undefined && metrics.confirmed_full_stops !== null ? metrics.confirmed_full_stops : '--');
+  const hospitalName = hospital.selected_hospital?.name || ambulance.destination_name || 'Hospital Destination';
 
   return (
     <div className="w-full bg-gradient-to-r from-emerald-950/90 via-command-surface to-emerald-950/90 border-y-2 border-emerald-500/80 px-6 py-3 shadow-[0_0_30px_rgba(16,185,129,0.25)] flex flex-wrap items-center justify-between gap-4 animate-in slide-in-from-top-4 duration-300">

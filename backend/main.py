@@ -4,13 +4,43 @@ import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from event_bus import ConnectionManager, event_bus
 from schemas import WSMessage
 from state_store import DashboardStateStore
+
+
+manager = ConnectionManager()
+state_store = DashboardStateStore()
+
+BACKEND_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = BACKEND_DIR.parent
+MODEL_DIR = PROJECT_DIR / "model"
+LIVE_TRAFFIC_IMAGE_DIR = MODEL_DIR / "live_inputs"
+JUNCTION_CAMERA_IMAGE_DIR = MODEL_DIR / "ambulance demo images"
+IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
+LIVE_TRAFFIC_CAMERA_IDS = {
+    "CAM_HOSPITAL_DIRECT_1",
+    "CAM_HOSPITAL_DIRECT_2",
+    "CAM_HOSPITAL_DIRECT_3",
+    "CAM_ORR_NORTH",
+    "CAM_ORR_SOUTH",
+    "CAM_ALT_HOSPITAL",
+    "CAM_VERTICAL_RIGHT_1",
+    "CAM_VERTICAL_RIGHT_2",
+    "CAM_J14_J13",
+    "CAM_J21_J29",
+    "CAM_J22_J23",
+    "CAM_J22_J30",
+    "CAM_J10_J18",
+    "CAM_J11_J19",
+    "CAM_J12_J20",
+    "CAM_CBD_WEST",
+    "CAM_CBD_EAST",
+}
 
 
 app = FastAPI(
@@ -28,23 +58,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-manager = ConnectionManager()
-state_store = DashboardStateStore()
-
-BACKEND_DIR = Path(__file__).resolve().parent
-PROJECT_DIR = BACKEND_DIR.parent
-MODEL_DIR = PROJECT_DIR / "model"
-LIVE_TRAFFIC_IMAGE_DIR = MODEL_DIR / "live_inputs"
-JUNCTION_CAMERA_IMAGE_DIR = MODEL_DIR / "ambulance demo images"
-IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png")
-LIVE_TRAFFIC_CAMERA_IDS = {
-    "CAM_HOSPITAL_DIRECT_1",
-    "CAM_HOSPITAL_DIRECT_2",
-    "CAM_HOSPITAL_DIRECT_3",
-    "CAM_ORR_NORTH",
-    "CAM_ORR_SOUTH",
-}
 
 
 def _image_response(path: Path) -> FileResponse:
@@ -176,6 +189,46 @@ async def get_live_traffic_image(camera_id: str):
     append ?v=<image_version> from TRAFFIC_OVERVIEW for an unambiguous refresh.
     """
     return _image_response(_resolve_live_traffic_frame(camera_id))
+
+
+@app.post("/api/images/traffic/{camera_id}")
+async def upload_traffic_image(camera_id: str, file: UploadFile = File(...)):
+    """
+    Upload a replacement camera frame into model/live_inputs.
+    The live simulation watcher detects this file change automatically,
+    running CNN inference and congestion-aware routing without direct backend coupling.
+    """
+    if camera_id not in LIVE_TRAFFIC_CAMERA_IDS:
+        raise HTTPException(status_code=400, detail="Invalid traffic camera ID")
+
+    file_ext = Path(file.filename or "").suffix.lower()
+    if file_ext not in IMAGE_SUFFIXES:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported format. Only .jpg, .jpeg, and .png are allowed.",
+        )
+
+    LIVE_TRAFFIC_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Clean up any existing image files for this camera_id with differing extensions
+    for suffix in IMAGE_SUFFIXES:
+        old_file = LIVE_TRAFFIC_IMAGE_DIR / f"{camera_id}{suffix}"
+        if old_file.exists():
+            try:
+                old_file.unlink()
+            except Exception:
+                pass
+
+    target_file = LIVE_TRAFFIC_IMAGE_DIR / f"{camera_id}{file_ext}"
+    content = await file.read()
+    target_file.write_bytes(content)
+
+    return {
+        "uploaded": True,
+        "camera_id": camera_id,
+        "filename": target_file.name,
+        "modified_ns": target_file.stat().st_mtime_ns,
+    }
 
 
 @app.get("/api/images/junction/{image_name}")

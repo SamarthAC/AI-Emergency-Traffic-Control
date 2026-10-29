@@ -1,7 +1,7 @@
-***Starting server on port 56870 ***
-Loading net-file from 'C:\Users\chapp\Desktop\Major Project\AI Traffic Control\simulation\bengaluru_structured\bengaluru_structured.net.xml' ... done (63ms).
-Loading additional-files from 'C:\Users\chapp\Desktop\Major Project\AI Traffic Control\simulation\bengaluru_structured\bengaluru_structured.add.xml' ... done (1ms).
-Loading route-files incrementally from 'C:\Users\chapp\Desktop\Major Project\AI Traffic Control\simulation\bengaluru_structured\bengaluru_structured.rou.xml'
+***Starting server on port 63633 ***
+Loading net-file from 'C:\Users\chapp\Desktop\Major Project\AI Traffic Control- Copy\simulation\bengaluru_structured\bengaluru_structured.net.xml' ... done (34ms).
+Loading additional-files from 'C:\Users\chapp\Desktop\Major Project\AI Traffic Control- Copy\simulation\bengaluru_structured\bengaluru_structured.add.xml' ... done (0ms).
+Loading route-files incrementally from 'C:\Users\chapp\Desktop\Major Project\AI Traffic Control- Copy\simulation\bengaluru_structured\bengaluru_structured.rou.xml'
 Loading done.
 Simulation started with time: 0.00.
 Warning: Route file should be sorted by departure time, ignoring 'bus_main'!
@@ -9,15 +9,16 @@ Warning: Route file should be sorted by departure time, ignoring 'truck_orr'!
 Warning: Route file should be sorted by departure time, ignoring 'car_orr'!
 Warning: Route file should be sorted by departure time, ignoring 'car_orr_return'!
 Warning: Route file should be sorted by departure time, ignoring 'hospital_traffic'!
-Simulation ended at time: 160.00.
+Simulation ended at time: 544.00.
+Reason: TraCI requested termination.
 Performance:
- Duration: 133.06s
- TraCI-Duration: 4.43s
- Real time factor: 1.20246
- UPS: 165.097211
+ Duration: 326.05s
+ TraCI-Duration: 11.70s
+ Real time factor: 1.66848
+ UPS: 766.858051
 Vehicles:
- Inserted: 279 (Loaded: 363)
- Running: 279
- Waiting: 84
-DijkstraRouter answered 391 queries and explored 150.57 edges on average.
-DijkstraRouter spent 0.06s answering queries (0.16ms on average).
+ Inserted: 904 (Loaded: 1302)
+ Running: 871
+ Waiting: 398
+DijkstraRouter answered 2527 queries and explored 164.85 edges on average.
+DijkstraRouter spent 0.30s answering queries (0.12ms on average).

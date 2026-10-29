@@ -84,4 +84,37 @@ export const dashboardApi = {
     if (!res.ok) throw new Error(`Failed to reset: ${res.statusText}`);
     return res.json();
   },
+
+  async uploadTrafficCameraImage(cameraId: string, file: File): Promise<{
+    uploaded: boolean;
+    camera_id: string;
+    filename: string;
+    modified_ns: number;
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE_URL}/api/images/traffic/${cameraId}`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Upload failed: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async setDemoMode(mode: 'WITH_CORRIDOR' | 'WITHOUT_CORRIDOR'): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      return res.ok;
+    } catch {
+      // Backend does not expose a demo-mode endpoint; cleanly isolated
+      return false;
+    }
+  },
 };
