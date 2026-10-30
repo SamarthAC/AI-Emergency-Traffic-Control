@@ -156,6 +156,10 @@ REALTIME_PHASE_FALLBACKS = {
 
         "CAM_J22_J30": "low1.jpeg",
 
+        "CAM_J22_J31": "low1.jpeg",
+
+        "CAM_J30_J39": "low1.jpeg",
+
         "CAM_J10_J18": "low1.jpeg",
 
         "CAM_J11_J19": "low1.jpeg",
@@ -193,6 +197,10 @@ REALTIME_PHASE_FALLBACKS = {
         "CAM_J22_J23": "high2.jpeg",
 
         "CAM_J22_J30": "high2.jpeg",
+
+        "CAM_J22_J31": "high2.jpeg",
+
+        "CAM_J30_J39": "high2.jpeg",
 
         "CAM_J10_J18": "high2.jpeg",
 

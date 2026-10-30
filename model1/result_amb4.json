@@ -1,0 +1,50 @@
+{
+  "image": "test_amb4.jpg",
+  "image_width": 612,
+  "image_height": 408,
+  "device": "cuda",
+  "vehicle_count": 2,
+  "non_ambulance_vehicle_count": 0,
+  "ambulance_detected": true,
+  "ambulance_count": 2,
+  "highest_ambulance_confidence": 0.8786,
+  "class_counts": {
+    "Ambulance": 2
+  },
+  "detections": [
+    {
+      "class_id": 14,
+      "class_name": "Ambulance",
+      "confidence": 0.8786,
+      "box_normalized": [
+        0.17394,
+        0.352557,
+        0.86031,
+        0.891419
+      ],
+      "box_pixels": [
+        106.5,
+        114.7,
+        526.5,
+        408.0
+      ]
+    },
+    {
+      "class_id": 14,
+      "class_name": "Ambulance",
+      "confidence": 0.8526,
+      "box_normalized": [
+        0.267362,
+        0.301149,
+        0.490062,
+        0.358116
+      ],
+      "box_pixels": [
+        163.6,
+        83.2,
+        299.9,
+        118.1
+      ]
+    }
+  ]
+}

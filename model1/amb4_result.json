@@ -1,0 +1,13 @@
+{
+  "image": "test_amb4.jpg",
+  "image_width": 612,
+  "image_height": 408,
+  "device": "cuda",
+  "vehicle_count": 0,
+  "non_ambulance_vehicle_count": 0,
+  "ambulance_detected": false,
+  "ambulance_count": 0,
+  "highest_ambulance_confidence": null,
+  "class_counts": {},
+  "detections": []
+}

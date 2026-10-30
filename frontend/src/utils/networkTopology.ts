@@ -93,7 +93,7 @@ export const NETWORK_EDGES: SumoEdgeDefinition[] = [
   { id: 'J36_J37', from: 'J36', to: 'J37' },
   { id: 'J37_J38', from: 'J37', to: 'J38' },
   { id: 'J38_J39', from: 'J38', to: 'J39' },
-  { id: 'J39_J40', from: 'J38', to: 'J40' },
+  { id: 'J39_J40', from: 'J39', to: 'J40' },
   // Row 6 (Bottom Hospital Corridor)
   { id: 'J41_J42', from: 'J41', to: 'J42' },
   { id: 'J42_J43', from: 'J42', to: 'J43' },
@@ -129,6 +129,7 @@ export const NETWORK_EDGES: SumoEdgeDefinition[] = [
   { id: 'J20_J28', from: 'J20', to: 'J28' },
   { id: 'J21_J29', from: 'J21', to: 'J29' },
   { id: 'J22_J30', from: 'J22', to: 'J30' },
+  { id: 'J22_J31', from: 'J22', to: 'J31' },
   { id: 'J23_J31', from: 'J23', to: 'J31' },
   { id: 'J24_J32', from: 'J24', to: 'J32' },
 
@@ -138,6 +139,7 @@ export const NETWORK_EDGES: SumoEdgeDefinition[] = [
   { id: 'J28_J36', from: 'J28', to: 'J36' },
   { id: 'J29_J37', from: 'J29', to: 'J37' },
   { id: 'J30_J38', from: 'J30', to: 'J38' },
+  { id: 'J30_J39', from: 'J30', to: 'J39' },
   { id: 'J31_J39', from: 'J31', to: 'J39' },
   { id: 'J32_J40', from: 'J32', to: 'J40' },
 
@@ -263,6 +265,20 @@ export const CAMERA_DEFINITIONS: Record<string, CameraDefinition> = {
     name: 'J22-J30 Corridor',
     type: 'traffic',
     edgeIds: ['J22_J30', 'J30_J22'],
+    defaultImage: 'low1.jpeg',
+  },
+  CAM_J22_J31: {
+    id: 'CAM_J22_J31',
+    name: 'J22-J31 Corridor',
+    type: 'traffic',
+    edgeIds: ['J22_J31', 'J31_J22'],
+    defaultImage: 'low1.jpeg',
+  },
+  CAM_J30_J39: {
+    id: 'CAM_J30_J39',
+    name: 'J30-J39 Corridor',
+    type: 'traffic',
+    edgeIds: ['J30_J39', 'J39_J30'],
     defaultImage: 'low1.jpeg',
   },
   CAM_J10_J18: {

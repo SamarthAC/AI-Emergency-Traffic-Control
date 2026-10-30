@@ -1,0 +1,85 @@
+{
+  "image": "test_amb3.jpeg",
+  "image_width": 1200,
+  "image_height": 800,
+  "device": "cuda",
+  "vehicle_count": 4,
+  "non_ambulance_vehicle_count": 4,
+  "ambulance_detected": false,
+  "ambulance_count": 0,
+  "highest_ambulance_confidence": null,
+  "class_counts": {
+    "Three-wheeler": 1,
+    "Two-wheeler": 3
+  },
+  "detections": [
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8537,
+      "box_normalized": [
+        0.033807,
+        0.393643,
+        0.147978,
+        0.549491
+      ],
+      "box_pixels": [
+        40.6,
+        274.2,
+        177.6,
+        461.2
+      ]
+    },
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.8449,
+      "box_normalized": [
+        0.552437,
+        0.522115,
+        0.746194,
+        0.724243
+      ],
+      "box_pixels": [
+        662.9,
+        428.3,
+        895.4,
+        670.9
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8387,
+      "box_normalized": [
+        0.0,
+        0.567947,
+        0.04473,
+        0.748342
+      ],
+      "box_pixels": [
+        0.0,
+        483.3,
+        53.7,
+        699.8
+      ]
+    },
+    {
+      "class_id": 7,
+      "class_name": "Two-wheeler",
+      "confidence": 0.8238,
+      "box_normalized": [
+        0.0,
+        0.537888,
+        0.033485,
+        0.626866
+      ],
+      "box_pixels": [
+        0.0,
+        447.3,
+        40.2,
+        554.0
+      ]
+    }
+  ]
+}

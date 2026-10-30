@@ -1,0 +1,5 @@
+Warning: Route file should be sorted by departure time, ignoring 'bus_main'!
+Warning: Route file should be sorted by departure time, ignoring 'truck_orr'!
+Warning: Route file should be sorted by departure time, ignoring 'car_orr'!
+Warning: Route file should be sorted by departure time, ignoring 'car_orr_return'!
+Warning: Route file should be sorted by departure time, ignoring 'hospital_traffic'!

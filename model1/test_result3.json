@@ -1,0 +1,51 @@
+{
+  "image": "test_image3.png",
+  "image_width": 1920,
+  "image_height": 1080,
+  "device": "cuda",
+  "vehicle_count": 2,
+  "non_ambulance_vehicle_count": 2,
+  "ambulance_detected": false,
+  "ambulance_count": 0,
+  "highest_ambulance_confidence": null,
+  "class_counts": {
+    "Sedan": 1,
+    "Three-wheeler": 1
+  },
+  "detections": [
+    {
+      "class_id": 6,
+      "class_name": "Three-wheeler",
+      "confidence": 0.934,
+      "box_normalized": [
+        0.326241,
+        0.392098,
+        0.543911,
+        0.566508
+      ],
+      "box_pixels": [
+        626.4,
+        332.8,
+        1044.3,
+        667.7
+      ]
+    },
+    {
+      "class_id": 1,
+      "class_name": "Sedan",
+      "confidence": 0.8088,
+      "box_normalized": [
+        0.0,
+        0.501538,
+        0.410039,
+        0.777741
+      ],
+      "box_pixels": [
+        0.0,
+        543.0,
+        787.3,
+        1073.3
+      ]
+    }
+  ]
+}

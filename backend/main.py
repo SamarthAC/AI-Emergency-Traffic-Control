@@ -35,6 +35,8 @@ LIVE_TRAFFIC_CAMERA_IDS = {
     "CAM_J21_J29",
     "CAM_J22_J23",
     "CAM_J22_J30",
+    "CAM_J22_J31",
+    "CAM_J30_J39",
     "CAM_J10_J18",
     "CAM_J11_J19",
     "CAM_J12_J20",

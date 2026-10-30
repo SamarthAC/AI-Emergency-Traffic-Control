@@ -1,0 +1,25 @@
+{
+    "vehicle_count": 16,
+    "weighted_vehicle_count": 11.7801,
+    "occupied_area_pixels": 289544.79,
+    "roi_area_pixels": 691200.0,
+    "occupancy_ratio": 0.4189,
+    "average_confidence": 0.7363,
+    "count_component": 0.4712,
+    "occupancy_component": 0.9309,
+    "traffic_score": 65.51,
+    "traffic_level": "HIGH",
+    "ambulance_detected": true,
+    "roi_normalized": [
+        0.0,
+        0.25,
+        1.0,
+        1.0
+    ],
+    "roi_pixels": [
+        0.0,
+        180.0,
+        1280.0,
+        720.0
+    ]
+}

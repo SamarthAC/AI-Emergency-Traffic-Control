@@ -1,22 +1,77 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useRef, useState } from 'react'
 import {
-  SUMO_JUNCTIONS,
-  NETWORK_EDGES,
   CAMERA_DEFINITIONS,
   CONTROLLED_SIGNALS,
-} from '../../utils/networkTopology';
+  NETWORK_EDGES,
+  SUMO_JUNCTIONS
+} from '../../utils/networkTopology'
 import {
-  sumoToSvg,
   getJunctionSvgPos,
-  SVG_VIEWBOX,
-} from '../../utils/coordinateTransform';
-import { useDashboardStore } from '../../store/dashboardStore';
-import { AmbulanceMarker } from './AmbulanceMarker';
-import { TrafficCameraMarker } from './TrafficCameraMarker';
-import { SignalMarker } from './SignalMarker';
-import { MapLegend } from './MapLegend';
-import { getTrafficColor } from '../../utils/formatters';
-import { ZoomIn, ZoomOut, RotateCcw, ShieldAlert, Crosshair, Route, Sparkles } from 'lucide-react';
+  sumoToSvg,
+  SVG_VIEWBOX
+} from '../../utils/coordinateTransform'
+import { useDashboardStore } from '../../store/dashboardStore'
+import { AmbulanceMarker } from './AmbulanceMarker'
+import { TrafficCameraMarker } from './TrafficCameraMarker'
+import { SignalMarker } from './SignalMarker'
+import { MapLegend } from './MapLegend'
+import {
+  Crosshair,
+  RotateCcw,
+  Route,
+  Sparkles,
+  ZoomIn,
+  ZoomOut
+} from 'lucide-react'
+
+/**
+ * Convert an edge ID to its opposite direction.
+ * Example: J01_J10 -> J10_J01.
+ */
+const getReverseEdge = (edgeId: string): string => {
+  const parts = edgeId.split('_')
+  return parts.length === 2 ? `${parts[1]}_${parts[0]}` : edgeId
+}
+
+// Convert live traffic information into Google Maps-style road colours.
+const getTrafficColor = (
+  trafficLevel: string | number | undefined
+): string | null => {
+  if (trafficLevel === undefined || trafficLevel === null) return null
+
+  const level = String(trafficLevel).trim().toUpperCase()
+
+  // HIGH traffic
+  if (
+    level.includes('HIGH') ||
+    level.includes('HEAVY') ||
+    level.includes('CONGESTED') ||
+    level.includes('SEVERE') ||
+    (!Number.isNaN(Number(level)) && Number(level) >= 70)
+  ) {
+    return '#EF4444'
+  }
+
+  // MODERATE traffic
+  if (
+    level.includes('MODERATE') ||
+    level.includes('MEDIUM') ||
+    (!Number.isNaN(Number(level)) && Number(level) >= 40 && Number(level) < 70)
+  ) {
+    return '#EAB308'
+  }
+
+  // LOW traffic
+  if (
+    level.includes('LOW') ||
+    level.includes('LIGHT') ||
+    (!Number.isNaN(Number(level)) && Number(level) < 40)
+  ) {
+    return '#22C55E'
+  }
+
+  return null
+}
 
 export const NetworkMap: React.FC = () => {
   const {
@@ -29,538 +84,460 @@ export const NetworkMap: React.FC = () => {
     selectedCameraId,
     setSelectedCameraId,
     setIsVisionModalOpen,
-    lastVisionEventTime,
-  } = useDashboardStore();
+    lastVisionEventTime
+  } = useDashboardStore()
 
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
 
-  // Distinguish station-to-pickup vs post-pickup hospital corridor
-  const { stationToPickupEdges, postPickupEdges, allActiveEdges } = useMemo(() => {
-    const stationSet = new Set<string>();
-    const postPickupSet = new Set<string>();
-    const allSet = new Set<string>();
+  // Find the CCTV camera responsible for monitoring each road segment.
+  const getEdgeTrafficLevel = (edgeId: string): string | number | undefined => {
+    const matchingCameras = Object.values(CAMERA_DEFINITIONS).filter(cam =>
+      cam.edgeIds.some(
+        cameraEdge =>
+          cameraEdge === edgeId || getReverseEdge(cameraEdge) === edgeId
+      )
+    )
 
-    const routeList = route?.route || [];
-    let isAfterPickup = false;
+    if (matchingCameras.length === 0) return undefined
 
-    routeList.forEach((edge) => {
-      allSet.add(edge);
-      const parts = edge.split('_');
-      if (parts.length === 2) {
-        allSet.add(`${parts[1]}_${parts[0]}`);
-      }
+    // If multiple cameras monitor the same road,
+    // use the most congested classification.
+    const levels = matchingCameras
+      .map(camera => traffic[camera.id]?.traffic_level)
+      .filter(
+        (level): level is string | number =>
+          level !== undefined && level !== null
+      )
 
-      if (!isAfterPickup) {
-        stationSet.add(edge);
-        if (parts.length === 2) stationSet.add(`${parts[1]}_${parts[0]}`);
-        if (edge.includes('J23') && edge.startsWith('J14')) {
-          isAfterPickup = true;
-        }
-      } else {
-        postPickupSet.add(edge);
-        if (parts.length === 2) postPickupSet.add(`${parts[1]}_${parts[0]}`);
-      }
-    });
+    if (levels.length === 0) return undefined
 
-    // Fallback if route is empty initially
-    if (allSet.size === 0) {
-      const defaultRoute = [
-        'J01_J10', 'J10_J11', 'J11_J12', 'J12_J13', 'J13_J14', 'J14_J23',
-        'J23_J24', 'J24_J32', 'J32_J40', 'J40_J48', 'J48_J47'
-      ];
-      defaultRoute.forEach((e) => allSet.add(e));
+    const severity = (level: string | number): number => {
+      const value = String(level).toUpperCase()
+
+      if (
+        value.includes('HIGH') ||
+        value.includes('HEAVY') ||
+        value.includes('CONGESTED') ||
+        value.includes('SEVERE') ||
+        (!Number.isNaN(Number(value)) && Number(value) >= 70)
+      )
+        return 3
+
+      if (
+        value.includes('MODERATE') ||
+        value.includes('MEDIUM') ||
+        (!Number.isNaN(Number(value)) &&
+          Number(value) >= 40 &&
+          Number(value) < 70)
+      )
+        return 2
+
+      return 1
     }
 
-    return {
-      stationToPickupEdges: stationSet,
-      postPickupEdges: postPickupSet,
-      allActiveEdges: allSet,
-    };
-  }, [route]);
+    return levels.reduce((highest, current) =>
+      severity(current) > severity(highest) ? current : highest
+    )
+  }
 
-  // Edges of the previous hospital corridor before replanning
-  const previousRouteEdges = useMemo(() => {
-    const prevSet = new Set<string>();
-    const prevList = route?.previous_post_pickup_route || [];
-    prevList.forEach((edge) => {
-      prevSet.add(edge);
-      const parts = edge.split('_');
-      if (parts.length === 2) prevSet.add(`${parts[1]}_${parts[0]}`);
-    });
-    return prevSet;
-  }, [route?.previous_post_pickup_route]);
-
-  // Edges associated with the currently selected camera
-  const selectedCameraEdges = useMemo(() => {
-    if (!selectedCameraId) return new Set<string>();
-    const camDef = CAMERA_DEFINITIONS[selectedCameraId];
-    return new Set<string>(camDef?.edgeIds || []);
-  }, [selectedCameraId]);
-
-  const handleZoomIn = () => setZoom((z) => Math.min(z + 0.2, 2.5));
-  const handleZoomOut = () => setZoom((z) => Math.max(z - 0.2, 0.7));
-  const handleResetView = () => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    setIsDragging(true);
-    dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
-    setPan({
-      x: e.clientX - dragStartRef.current.x,
-      y: e.clientY - dragStartRef.current.y,
-    });
-  };
-
-  const handleMouseUp = () => setIsDragging(false);
-
-  const handleCenterAmbulance = () => {
-    const targetX = SVG_VIEWBOX.width / 2 - ambulanceVisualPos.x;
-    const targetY = SVG_VIEWBOX.height / 2 - ambulanceVisualPos.y;
-    setPan({ x: targetX * 0.5, y: targetY * 0.5 });
-  };
-
-  const getEdgeTrafficLevel = (edgeId: string): string => {
-    for (const [camId, camDef] of Object.entries(CAMERA_DEFINITIONS)) {
-      if (camDef.edgeIds.includes(edgeId)) {
-        const liveTraffic = traffic[camId];
-        return liveTraffic?.traffic_level || 'LOW';
-      }
-    }
-    return 'DEFAULT';
-  };
+  // Keep the backend's ordered route for progress tracking, but do not
+  // draw the untravelled/selected route on the map.
+  const routeList: string[] = route?.route || []
+  const currentRouteIndex = routeList.findIndex(
+    routeEdge =>
+      routeEdge === ambulance.edge_id ||
+      getReverseEdge(routeEdge) === ambulance.edge_id
+  )
+  const ambulanceStatus = String(ambulance.status || '').toUpperCase()
+  const isAmbulanceArrived = ambulanceStatus === 'ARRIVED'
 
   const isPickupReplanStage =
     route?.route_stage === 'PICKUP_REPLAN' ||
-    route?.replan_type === 'PICKUP_TRANSITION';
+    route?.replan_type === 'PICKUP_TRANSITION'
+
+  const handleZoomIn = () => setZoom(current => Math.min(current + 0.2, 2.5))
+  const handleZoomOut = () => setZoom(current => Math.max(current - 0.2, 0.7))
+
+  const handleResetView = () => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }
+
+  const handleMouseDown = (event: React.MouseEvent) => {
+    if (event.button !== 0) return
+    setIsDragging(true)
+    dragStartRef.current = {
+      x: event.clientX - pan.x,
+      y: event.clientY - pan.y
+    }
+  }
+
+  const handleMouseMove = (event: React.MouseEvent) => {
+    if (!isDragging) return
+    setPan({
+      x: event.clientX - dragStartRef.current.x,
+      y: event.clientY - dragStartRef.current.y
+    })
+  }
+
+  const handleMouseUp = () => setIsDragging(false)
+
+  const handleCenterAmbulance = () => {
+    const targetX = SVG_VIEWBOX.width / 2 - ambulanceVisualPos.x
+    const targetY = SVG_VIEWBOX.height / 2 - ambulanceVisualPos.y
+    setPan({ x: targetX * 0.5, y: targetY * 0.5 })
+  }
 
   return (
     <div
-      className="relative w-full h-full bg-command-bg rounded-lg border border-command-border/80 overflow-hidden select-none flex flex-col"
+      className='relative flex h-full w-full flex-col overflow-hidden rounded-lg border border-command-border/80 bg-command-bg select-none'
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
-      {/* Top Map Action Bar */}
-      <div className="absolute top-3 left-3 z-20 flex items-center gap-2 flex-wrap">
-        <div className="px-3 py-1.5 rounded-lg bg-command-panel/90 backdrop-blur-md border border-command-border text-xs font-mono font-semibold text-slate-200 flex items-center gap-2 shadow-lg">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+      {/* Map status and route-replanning banners */}
+      <div className='absolute left-3 top-3 z-20 flex flex-wrap items-center gap-2'>
+        <div className='flex items-center gap-2 rounded-lg border border-command-border bg-command-panel/90 px-3 py-1.5 font-mono text-xs font-semibold text-slate-200 shadow-lg backdrop-blur-md'>
+          <span className='h-2 w-2 rounded-full bg-cyan-400' />
           <span>SUMO NETWORK VISUALIZATION</span>
-          <span className="text-[10px] text-slate-500 font-normal">| 48 JUNCTIONS</span>
+          <span className='text-[10px] font-normal text-slate-500'>
+            | 48 JUNCTIONS
+          </span>
         </div>
 
         {isPickupReplanStage && (
-          <div className="px-2.5 py-1 rounded-lg bg-cyan-950/90 border border-cyan-400/70 text-[11px] font-mono text-cyan-300 flex items-center gap-1.5 shadow-lg animate-pulse">
-            <Route className="w-3.5 h-3.5 text-cyan-400" />
+          <div className='flex items-center gap-1.5 rounded-lg border border-cyan-400/70 bg-cyan-950/90 px-2.5 py-1 font-mono text-[11px] text-cyan-300 shadow-lg'>
+            <Route className='h-3.5 w-3.5 text-cyan-400' />
             <span>PICKUP-STAGE CORRIDOR REPLAN</span>
-            {typeof route.improvement_percent === 'number' && route.improvement_percent > 0 && (
-              <span className="text-emerald-400 font-bold ml-1">
-                ({route.improvement_percent.toFixed(1)}% cost reduction)
-              </span>
-            )}
+            {typeof route?.improvement_percent === 'number' &&
+              route.improvement_percent > 0 && (
+                <span className='ml-1 font-bold text-emerald-400'>
+                  ({route.improvement_percent.toFixed(1)}% cost reduction)
+                </span>
+              )}
           </div>
         )}
 
         {route?.rerouted && !isPickupReplanStage && (
-          <div className="px-2.5 py-1 rounded-lg bg-emerald-950/90 border border-emerald-500/70 text-[11px] font-mono text-emerald-300 flex items-center gap-1.5 shadow-lg animate-pulse">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+          <div className='flex items-center gap-1.5 rounded-lg border border-emerald-500/70 bg-emerald-950/90 px-2.5 py-1 font-mono text-[11px] text-emerald-300 shadow-lg'>
+            <Sparkles className='h-3.5 w-3.5 text-emerald-400' />
             <span>ROUTE UPDATED</span>
-            {typeof route.improvement_percent === 'number' && route.improvement_percent > 0 && (
-              <span className="text-emerald-300 font-bold ml-1">
-                ({route.improvement_percent.toFixed(1)}% lower traffic-aware cost)
-              </span>
-            )}
+            {typeof route.improvement_percent === 'number' &&
+              route.improvement_percent > 0 && (
+                <span className='ml-1 font-bold text-emerald-300'>
+                  ({route.improvement_percent.toFixed(1)}% lower traffic-aware
+                  cost)
+                </span>
+              )}
           </div>
         )}
       </div>
 
-      {/* Map Pan & Zoom Controls */}
-      <div className="absolute top-3 right-3 z-20 flex flex-col gap-1.5 bg-command-panel/95 backdrop-blur-md border border-command-border/80 rounded-lg p-1 shadow-xl">
+      {/* Map pan and zoom controls */}
+      <div className='absolute right-3 top-3 z-20 flex flex-col gap-1.5 rounded-lg border border-command-border/80 bg-command-panel/95 p-1 shadow-xl backdrop-blur-md'>
         <button
+          type='button'
           onClick={handleZoomIn}
-          title="Zoom In"
-          className="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-400 rounded transition-colors"
+          title='Zoom In'
+          className='rounded p-1.5 text-slate-300 transition-colors hover:bg-slate-800 hover:text-cyan-400'
         >
-          <ZoomIn className="w-4 h-4" />
+          <ZoomIn className='h-4 w-4' />
         </button>
         <button
+          type='button'
           onClick={handleZoomOut}
-          title="Zoom Out"
-          className="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-400 rounded transition-colors"
+          title='Zoom Out'
+          className='rounded p-1.5 text-slate-300 transition-colors hover:bg-slate-800 hover:text-cyan-400'
         >
-          <ZoomOut className="w-4 h-4" />
+          <ZoomOut className='h-4 w-4' />
         </button>
         <button
+          type='button'
           onClick={handleCenterAmbulance}
-          title="Center on Ambulance"
-          className="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-400 rounded transition-colors"
+          title='Center on Ambulance'
+          className='rounded p-1.5 text-slate-300 transition-colors hover:bg-slate-800 hover:text-cyan-400'
         >
-          <Crosshair className="w-4 h-4" />
+          <Crosshair className='h-4 w-4' />
         </button>
         <button
+          type='button'
           onClick={handleResetView}
-          title="Reset View"
-          className="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-cyan-400 rounded transition-colors border-t border-slate-800 mt-0.5"
+          title='Reset View'
+          className='mt-0.5 rounded border-t border-slate-800 p-1.5 text-slate-300 transition-colors hover:bg-slate-800 hover:text-cyan-400'
         >
-          <RotateCcw className="w-4 h-4" />
+          <RotateCcw className='h-4 w-4' />
         </button>
       </div>
 
       <svg
         viewBox={`0 0 ${SVG_VIEWBOX.width} ${SVG_VIEWBOX.height}`}
-        className="w-full h-full flex-1 cursor-grab active:cursor-grabbing"
+        className='h-full w-full flex-1 cursor-grab active:cursor-grabbing'
       >
         <defs>
-          <pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">
+          <pattern
+            id='gridPattern'
+            width='40'
+            height='40'
+            patternUnits='userSpaceOnUse'
+          >
             <path
-              d="M 40 0 L 0 0 0 40"
-              fill="none"
-              stroke="rgba(30, 45, 74, 0.35)"
-              strokeWidth="1"
+              d='M 40 0 L 0 0 0 40'
+              fill='none'
+              stroke='rgba(30, 45, 74, 0.35)'
+              strokeWidth='1'
             />
           </pattern>
-
-          <filter id="routeGlow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="5" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-
-          <filter id="replanGlow" x="-30%" y="-30%" width="160%" height="160%">
-            <feGaussianBlur stdDeviation="8" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
 
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           <rect
-            x="-500"
-            y="-500"
+            x='-500'
+            y='-500'
             width={SVG_VIEWBOX.width + 1000}
             height={SVG_VIEWBOX.height + 1000}
-            fill="url(#gridPattern)"
+            fill='url(#gridPattern)'
           />
 
-          {/* 1. Base Road Network Layer */}
-          <g id="baseRoads">
-            {NETWORK_EDGES.map((edge) => {
-              const p1 = getJunctionSvgPos(edge.from);
-              const p2 = getJunctionSvgPos(edge.to);
-              const trafficLevel = getEdgeTrafficLevel(edge.id);
-              const color = getTrafficColor(trafficLevel);
-              const isSelectedCamRoad = selectedCameraEdges.has(edge.id);
+          {/* 1. Base road network: neutral roads only, visible from initial load */}
+          <g id='baseRoads'>
+            {NETWORK_EDGES.map(edge => {
+              const p1 = getJunctionSvgPos(edge.from)
+              const p2 = getJunctionSvgPos(edge.to)
 
               return (
-                <g key={edge.id} className="transition-all">
-                  {/* Selected Camera Highlight halo */}
-                  {isSelectedCamRoad && (
-                    <line
-                      x1={p1.x}
-                      y1={p1.y}
-                      x2={p2.x}
-                      y2={p2.y}
-                      stroke="#00F0FF"
-                      strokeWidth="18"
-                      strokeOpacity="0.3"
-                      strokeLinecap="round"
-                    />
-                  )}
-
-                  {/* Road Base Track */}
+                <g key={edge.id}>
+                  {/* Normal road background */}
                   <line
                     x1={p1.x}
                     y1={p1.y}
                     x2={p2.x}
                     y2={p2.y}
-                    stroke={isSelectedCamRoad ? '#1E2D4A' : '#162238'}
-                    strokeWidth="12"
-                    strokeLinecap="round"
+                    stroke='#162238'
+                    strokeWidth='12'
+                    strokeLinecap='round'
                   />
 
-                  {/* Traffic Heat Overlay */}
-                  {trafficLevel !== 'DEFAULT' && (
-                    <line
-                      x1={p1.x}
-                      y1={p1.y}
-                      x2={p2.x}
-                      y2={p2.y}
-                      stroke={color.hex}
-                      strokeWidth="6"
-                      strokeOpacity={isSelectedCamRoad ? '0.7' : '0.4'}
-                      strokeLinecap="round"
-                    />
-                  )}
-
+                  {/* Road centre line */}
                   <line
                     x1={p1.x}
                     y1={p1.y}
                     x2={p2.x}
                     y2={p2.y}
-                    stroke="#2B3F66"
-                    strokeWidth="1.5"
-                    strokeDasharray="6 4"
+                    stroke='#2B3F66'
+                    strokeWidth='1.5'
+                    strokeDasharray='6 4'
                   />
+
+                  {/* Live Google Maps-style traffic colour */}
+                  {(() => {
+                    const trafficLevel = getEdgeTrafficLevel(edge.id)
+                    const trafficColor = getTrafficColor(trafficLevel)
+
+                    if (!trafficColor) return null
+
+                    return (
+                      <line
+                        x1={p1.x}
+                        y1={p1.y}
+                        x2={p2.x}
+                        y2={p2.y}
+                        stroke={trafficColor}
+                        strokeWidth='7'
+                        strokeLinecap='round'
+                        opacity='0.95'
+                      />
+                    )
+                  })()}
                 </g>
-              );
+              )
             })}
           </g>
 
-          {/* 1.5. Previous Route Layer (Rendered as muted dashed line after a reroute) */}
-          {route?.rerouted && previousRouteEdges.size > 0 && (
-            <g id="previousRouteLayer" opacity="0.65">
-              {NETWORK_EDGES.map((edge) => {
-                const isPrevSegment = previousRouteEdges.has(edge.id);
-                const isCurrentActive = allActiveEdges.has(edge.id);
-                // Only render if it was part of previous route and is NOT part of current active route
-                if (!isPrevSegment || isCurrentActive) return null;
+          {/* Show ONLY the part of the AI route already travelled.
+              Future route edges remain hidden; each completed/current edge
+              turns green as the ambulance progresses junction by junction. */}
+          {routeList.length > 0 &&
+            (currentRouteIndex >= 0 || isAmbulanceArrived) && (
+              <g id='travelledRouteLayer'>
+                {NETWORK_EDGES.map(edge => {
+                  const routeIndex = routeList.findIndex(
+                    routeEdge =>
+                      routeEdge === edge.id ||
+                      getReverseEdge(routeEdge) === edge.id
+                  )
 
-                const p1 = getJunctionSvgPos(edge.from);
-                const p2 = getJunctionSvgPos(edge.to);
+                  const hasBeenTravelled =
+                    isAmbulanceArrived ||
+                    (routeIndex >= 0 && routeIndex <= currentRouteIndex)
 
-                return (
-                  <g key={`prev_${edge.id}`}>
+                  if (!hasBeenTravelled || routeIndex < 0) return null
+
+                  const p1 = getJunctionSvgPos(edge.from)
+                  const p2 = getJunctionSvgPos(edge.to)
+
+                  return (
                     <line
+                      key={`travelled_${edge.id}`}
                       x1={p1.x}
                       y1={p1.y}
                       x2={p2.x}
                       y2={p2.y}
-                      stroke="#64748B"
-                      strokeWidth="6"
-                      strokeDasharray="8 6"
-                      strokeLinecap="round"
+                      stroke='#22C55E'
+                      strokeWidth='7'
+                      strokeLinecap='round'
+                      opacity='1'
                     />
-                    <line
-                      x1={p1.x}
-                      y1={p1.y}
-                      x2={p2.x}
-                      y2={p2.y}
-                      stroke="#94A3B8"
-                      strokeWidth="2"
-                      strokeDasharray="4 6"
-                      strokeLinecap="round"
-                    />
-                  </g>
-                );
-              })}
-            </g>
-          )}
+                  )
+                })}
+              </g>
+            )}
 
-          {/* 2. Active AI Emergency Route Highlight Layer */}
-          <g id="activeRouteLayer">
-            {NETWORK_EDGES.map((edge) => {
-              const isRouteSegment = allActiveEdges.has(edge.id);
-              if (!isRouteSegment) return null;
-
-              const isPostPickup = postPickupEdges.has(edge.id);
-              const p1 = getJunctionSvgPos(edge.from);
-              const p2 = getJunctionSvgPos(edge.to);
-              const isCorridorActive = Boolean(corridor.armed);
-
-              return (
-                <g key={`route_${edge.id}`}>
-                  {/* Glowing Route Underlay */}
-                  <line
-                    x1={p1.x}
-                    y1={p1.y}
-                    x2={p2.x}
-                    y2={p2.y}
-                    stroke={
-                      isPostPickup && isPickupReplanStage
-                        ? '#00F0FF'
-                        : isCorridorActive
-                        ? '#10B981'
-                        : '#38BDF8'
-                    }
-                    strokeWidth={isPostPickup && isPickupReplanStage ? '12' : '10'}
-                    strokeOpacity="0.75"
-                    strokeLinecap="round"
-                    filter={isPostPickup && isPickupReplanStage ? 'url(#replanGlow)' : 'url(#routeGlow)'}
-                  />
-                  {/* Bright Core Line */}
-                  <line
-                    x1={p1.x}
-                    y1={p1.y}
-                    x2={p2.x}
-                    y2={p2.y}
-                    stroke="#FFFFFF"
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                  />
-                </g>
-              );
-            })}
-          </g>
-
-          {/* 3. Controlled Signals Layer */}
-          <g id="signalLayer">
-            {CONTROLLED_SIGNALS.map((jId) => {
-              const pos = getJunctionSvgPos(jId);
-              const sigState = signals[jId];
-              // Strictly verify active green corridor on this signal - do not fabricate green
-              const isGreen = Boolean(sigState?.green_corridor_active);
-              const isArmed = Boolean(corridor.armed);
+          {/* 2. Controlled traffic signals and real corridor states */}
+          <g id='signalLayer'>
+            {CONTROLLED_SIGNALS.map(junctionId => {
+              const pos = getJunctionSvgPos(junctionId)
+              const signalState = signals[junctionId]
+              const isGreen = Boolean(signalState?.green_corridor_active)
+              const isArmed = Boolean(corridor.armed)
 
               return (
                 <SignalMarker
-                  key={`sig_${jId}`}
-                  junctionId={jId}
+                  key={`signal_${junctionId}`}
+                  junctionId={junctionId}
                   x={pos.x}
                   y={pos.y}
                   isGreenCorridorActive={isGreen}
                   isArmed={isArmed}
-                  state={sigState?.state || 'NORMAL'}
-                  distanceToSignalM={sigState?.distance_to_signal_m}
-                  controlledLinks={sigState?.controlled_links}
-                  phaseState={sigState?.phase_state}
-                  incomingEdge={sigState?.incoming_edge}
-                  outgoingEdge={sigState?.outgoing_edge}
+                  state={signalState?.state || 'NORMAL'}
+                  distanceToSignalM={signalState?.distance_to_signal_m}
+                  controlledLinks={signalState?.controlled_links}
+                  phaseState={signalState?.phase_state}
+                  incomingEdge={signalState?.incoming_edge}
+                  outgoingEdge={signalState?.outgoing_edge}
                 />
-              );
+              )
             })}
           </g>
 
-          {/* 4. Junction Nodes & Landmark Labels */}
-          <g id="junctionNodes">
-            {Object.values(SUMO_JUNCTIONS).map((junction) => {
-              const pos = sumoToSvg(junction.x, junction.y);
-              const isStation = junction.type === 'station' || junction.id === 'J01';
-              const isPickup = junction.type === 'pickup' || junction.id === 'J10';
-              const isAltHospital = junction.id === 'J45';
-              const isMainHospital = junction.type === 'hospital' || junction.id === 'J47';
+          {/* 3. Junction nodes and landmark labels; no decorative pulsing rings */}
+          <g id='junctionNodes'>
+            {Object.values(SUMO_JUNCTIONS).map(junction => {
+              const pos = sumoToSvg(junction.x, junction.y)
+              const isStation =
+                junction.type === 'station' || junction.id === 'J01'
+              const isPickup =
+                junction.type === 'pickup' || junction.id === 'J10'
+              const isAltHospital = junction.id === 'J45'
+              const isMainHospital =
+                junction.type === 'hospital' || junction.id === 'J47'
 
               if (isStation || isPickup || isAltHospital || isMainHospital) {
-                let badgeColor = '#00F0FF';
-                let label = junction.label || junction.id;
-                let bgColor = '#0B0F19';
+                let badgeColor = '#00F0FF'
+                let label = junction.label || junction.id
+                const bgColor = '#0B0F19'
 
                 if (isStation) {
-                  badgeColor = '#38BDF8';
-                  label = 'Ambulance Base (J01)';
+                  badgeColor = '#38BDF8'
+                  label = 'Ambulance Base (J01)'
                 } else if (isPickup) {
-                  badgeColor = '#EF4444';
-                  label = 'Emergency Pickup (J10)';
+                  badgeColor = '#EF4444'
+                  label = 'Emergency Pickup (J10)'
                 } else if (isMainHospital) {
-                  badgeColor = '#10B981';
-                  label = 'Main Hospital (J47)';
+                  badgeColor = '#10B981'
+                  label = 'Main Hospital (J47)'
                 } else if (isAltHospital) {
-                  badgeColor = '#A855F7';
-                  label = 'Alt Hospital (J45)';
+                  badgeColor = '#A855F7'
+                  label = 'Alt Hospital (J45)'
                 }
 
                 return (
-                  <g key={junction.id} transform={`translate(${pos.x}, ${pos.y})`}>
+                  <g
+                    key={junction.id}
+                    transform={`translate(${pos.x}, ${pos.y})`}
+                  >
                     <circle
-                      r="16"
-                      fill={badgeColor}
-                      fillOpacity="0.2"
-                      className="animate-ping-slow"
+                      r='9'
+                      fill={bgColor}
+                      stroke={badgeColor}
+                      strokeWidth='2'
                     />
-                    <circle r="9" fill={bgColor} stroke={badgeColor} strokeWidth="2.5" />
-                    <circle r="4" fill={badgeColor} />
-
-                    <g transform="translate(0, -22)">
-                      <rect
-                        x="-65"
-                        y="-12"
-                        width="130"
-                        height="18"
-                        rx="4"
-                        fill="#080C14"
-                        stroke={badgeColor}
-                        strokeWidth="1.2"
-                        opacity="0.95"
-                      />
-                      <text
-                        x="0"
-                        y="1"
-                        textAnchor="middle"
-                        fill={badgeColor}
-                        fontSize="9"
-                        fontFamily="monospace"
-                        fontWeight="bold"
-                      >
-                        {label}
-                      </text>
-                    </g>
+                    <circle r='4' fill={badgeColor} />
                   </g>
-                );
+                )
               }
 
               return (
-                <g key={junction.id} transform={`translate(${pos.x}, ${pos.y})`}>
-                  <circle r="4" fill="#0E1524" stroke="#334155" strokeWidth="1.5" />
+                <g
+                  key={junction.id}
+                  transform={`translate(${pos.x}, ${pos.y})`}
+                >
+                  <circle
+                    r='4'
+                    fill='#0E1524'
+                    stroke='#334155'
+                    strokeWidth='1.5'
+                  />
                   <text
-                    x="0"
-                    y="12"
-                    textAnchor="middle"
-                    fill="#64748B"
-                    fontSize="7"
-                    fontFamily="monospace"
-                    opacity="0.8"
+                    x='0'
+                    y='12'
+                    textAnchor='middle'
+                    fill='#64748B'
+                    fontSize='7'
+                    fontFamily='monospace'
+                    opacity='0.8'
                   >
                     {junction.id}
                   </text>
                 </g>
-              );
+              )
             })}
           </g>
 
-          {/* 5. Interactive Traffic Camera Markers */}
-          <g id="cameraLayer">
-            {Object.values(CAMERA_DEFINITIONS).map((cam) => {
-              const primaryEdge = cam.edgeIds[0];
-              const edgeParts = primaryEdge.split('_');
-              let camX = 0;
-              let camY = 0;
+          {/* 4. Interactive CCTV camera markers */}
+          <g id='cameraLayer'>
+            {Object.values(CAMERA_DEFINITIONS).map(camera => {
+              const primaryEdge = camera.edgeIds[0]
+              const edgeParts = primaryEdge.split('_')
+              let cameraX = 0
+              let cameraY = 0
 
               if (edgeParts.length === 2) {
-                const p1 = getJunctionSvgPos(edgeParts[0]);
-                const p2 = getJunctionSvgPos(edgeParts[1]);
-                camX = (p1.x + p2.x) / 2;
-                camY = (p1.y + p2.y) / 2;
+                const p1 = getJunctionSvgPos(edgeParts[0])
+                const p2 = getJunctionSvgPos(edgeParts[1])
+                cameraX = (p1.x + p2.x) / 2
+                cameraY = (p1.y + p2.y) / 2
               }
 
-              const liveTraffic = traffic[cam.id];
-              const isSelected = selectedCameraId === cam.id;
-              const isJcamActive =
-                cam.id === 'JCAM_J10' &&
+              const liveTraffic = traffic[camera.id]
+              const isSelected = selectedCameraId === camera.id
+              const isCameraActive =
+                camera.id === 'JCAM_J10' &&
                 lastVisionEventTime !== null &&
-                Date.now() - lastVisionEventTime < 5000;
+                Date.now() - lastVisionEventTime < 5000
 
               return (
                 <TrafficCameraMarker
-                  key={cam.id}
-                  camera={cam}
-                  x={camX}
-                  y={camY}
+                  key={camera.id}
+                  camera={camera}
+                  x={cameraX}
+                  y={cameraY}
                   trafficLevel={liveTraffic?.traffic_level || 'LOW'}
                   isSelected={isSelected}
-                  isJunctionCamActive={isJcamActive}
+                  isJunctionCamActive={isCameraActive}
                   onClick={() => {
-                    setSelectedCameraId(cam.id);
-                    setIsVisionModalOpen(true);
+                    setSelectedCameraId(camera.id)
+                    setIsVisionModalOpen(true)
                   }}
                 />
-              );
+              )
             })}
           </g>
 
-          {/* 6. Live Smooth Animated Ambulance Token */}
+          {/* 5. Live ambulance marker: position updates from the dashboard store */}
           <AmbulanceMarker
             x={ambulanceVisualPos.x}
             y={ambulanceVisualPos.y}
@@ -572,5 +549,5 @@ export const NetworkMap: React.FC = () => {
 
       <MapLegend />
     </div>
-  );
-};
+  )
+}
